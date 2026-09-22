@@ -1,7 +1,8 @@
+/// <reference types="node" />
 import "dotenv/config";
 import bcrypt from "bcryptjs";
 import { PrismaClient, Role } from "@prisma/client";
-
+ 
 const prisma = new PrismaClient();
 
 async function main() {

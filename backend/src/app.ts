@@ -8,6 +8,7 @@ import resourceRoutes from "./routes/resource.routes";
 import scheduleRoutes from "./routes/schedule.routes";
 import holidayRoutes from "./routes/holiday.routes";
 import appointmentRoutes from "./routes/appointment.routes";
+import queueRoutes from "./routes/queue.routes";
 const app = express();
 app.use(express.json());
 app.use(
@@ -26,6 +27,7 @@ app.use("/api/resources", resourceRoutes);
 app.use("/api/branches", scheduleRoutes);
 app.use("/api/branches", holidayRoutes);
 app.use("/api/appointments", appointmentRoutes);
+app.use("/api/queue", queueRoutes);
 
 
 app.get("/api/health", (_req, res) => {

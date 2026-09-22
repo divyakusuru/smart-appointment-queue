@@ -1,10 +1,10 @@
+
 import { Request, Response, NextFunction } from "express";
-import jwt from "jsonwebtoken";
 import { verifyAccessToken } from "../utils/tokens";
 
 export interface AuthRequest extends Request {
   user?: {
-    userId: number;
+    id: number;
     role: string;
   };
 }
@@ -40,7 +40,7 @@ export function authenticate(
     }
 
     req.user = {
-      userId: decoded.userId,
+      id: decoded.userId,
       role: decoded.role,
     };
 

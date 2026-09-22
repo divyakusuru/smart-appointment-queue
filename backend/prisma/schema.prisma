@@ -50,6 +50,7 @@ model User {
 
   refreshTokens RefreshToken[]
   appointments  Appointment[]
+  queues        Queue[]
 }
 
 model RefreshToken {
@@ -80,6 +81,7 @@ model Branch {
   businessHours BusinessHour[]
   holidays      Holiday[]
   appointments  Appointment[]
+  queues        Queue[]
 }
 
 model Service {
@@ -149,6 +151,7 @@ model Appointment {
   endTime           DateTime
   status            AppointmentStatus @default(CONFIRMED)
   notes             String?
+  queue             Queue?
   idempotencyKey    String?           @unique
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
@@ -173,4 +176,26 @@ model AppointmentResource {
 
   @@unique([appointmentId, resourceId])
   @@index([resourceId])
+}
+
+model Queue {
+  id            Int           @id @default(autoincrement())
+  appointmentId Int           @unique
+  userId        Int
+  branchId      Int
+  queueDate     DateTime      @db.Date
+  position      Int
+  priority      QueuePriority @default(NORMAL)
+  status        QueueStatus   @default(WAITING)
+  calledAt      DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch      Branch      @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, queueDate, position])
+  @@index([branchId, queueDate, status])
+  @@index([userId, queueDate])
 }

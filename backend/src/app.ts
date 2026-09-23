@@ -9,6 +9,7 @@ import scheduleRoutes from "./routes/schedule.routes";
 import holidayRoutes from "./routes/holiday.routes";
 import appointmentRoutes from "./routes/appointment.routes";
 import queueRoutes from "./routes/queue.routes";
+import waitlistRoutes from "./routes/waitlist.routes";
 const app = express();
 app.use(express.json());
 app.use(
@@ -28,6 +29,7 @@ app.use("/api/branches", scheduleRoutes);
 app.use("/api/branches", holidayRoutes);
 app.use("/api/appointments", appointmentRoutes);
 app.use("/api/queue", queueRoutes);
+app.use("/api/waitlist", waitlistRoutes);
 
 
 app.get("/api/health", (_req, res) => {

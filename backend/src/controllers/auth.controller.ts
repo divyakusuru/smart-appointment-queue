@@ -1,12 +1,14 @@
+
 import { Request, Response } from "express";
 import { z } from "zod";
-import bcrypt from "bcryptjs";
 import { prisma } from "../config/prisma";
 import type { AuthRequest } from "../middleware/auth";
+
 import {
   registerUser,
   loginUser,
 } from "../services/auth.service";
+
 import {
   createAccessToken,
   createRefreshToken,
@@ -24,6 +26,8 @@ const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1).max(72),
 });
+
+// ---------------- REGISTER ----------------
 
 export async function register(req: Request, res: Response) {
   const parsed = registerSchema.safeParse(req.body);
@@ -46,8 +50,12 @@ export async function register(req: Request, res: Response) {
       data: user,
     });
   } catch (error) {
-    if (error instanceof Error &&
-        error.message === "EMAIL_ALREADY_EXISTS") {
+    console.error("REGISTER CONTROLLER ERROR:", error);
+
+    if (
+      error instanceof Error &&
+      error.message === "EMAIL_ALREADY_EXISTS"
+    ) {
       return res.status(409).json({
         success: false,
         error: {
@@ -66,6 +74,8 @@ export async function register(req: Request, res: Response) {
     });
   }
 }
+
+// ---------------- LOGIN ----------------
 
 export async function login(req: Request, res: Response) {
   const parsed = loginSchema.safeParse(req.body);
@@ -91,8 +101,18 @@ export async function login(req: Request, res: Response) {
       data: result,
     });
   } catch (error) {
-    if (error instanceof Error &&
-        error.message === "INVALID_CREDENTIALS") {
+    // This prints the actual error in your backend terminal.
+    console.error("LOGIN CONTROLLER ERROR:", error);
+
+    if (error instanceof Error) {
+      console.error("Error message:", error.message);
+      console.error("Stack trace:", error.stack);
+    }
+
+    if (
+      error instanceof Error &&
+      error.message === "INVALID_CREDENTIALS"
+    ) {
       return res.status(401).json({
         success: false,
         error: {
@@ -111,6 +131,8 @@ export async function login(req: Request, res: Response) {
     });
   }
 }
+
+// ---------------- REFRESH TOKEN ----------------
 
 export async function refresh(req: Request, res: Response) {
   const { refreshToken } = req.body;
@@ -201,8 +223,12 @@ export async function refresh(req: Request, res: Response) {
       },
     });
   } catch (error) {
-    if (error instanceof Error &&
-        error.message === "REFRESH_TOKEN_ALREADY_USED") {
+    console.error("REFRESH TOKEN ERROR:", error);
+
+    if (
+      error instanceof Error &&
+      error.message === "REFRESH_TOKEN_ALREADY_USED"
+    ) {
       return res.status(401).json({
         success: false,
         error: {
@@ -221,6 +247,8 @@ export async function refresh(req: Request, res: Response) {
     });
   }
 }
+
+// ---------------- LOGOUT ----------------
 
 export async function logout(req: Request, res: Response) {
   const { refreshToken } = req.body;
@@ -242,6 +270,8 @@ export async function logout(req: Request, res: Response) {
     message: "Logged out successfully",
   });
 }
+
+// ---------------- CURRENT USER ----------------
 
 export async function me(req: AuthRequest, res: Response) {
   if (!req.user) {

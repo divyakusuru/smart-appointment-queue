@@ -48,9 +48,10 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  refreshTokens RefreshToken[]
-  appointments  Appointment[]
-  queues        Queue[]
+  refreshTokens   RefreshToken[]
+  appointments    Appointment[]
+  queues          Queue[]
+  waitlistEntries Waitlist[]
 }
 
 model RefreshToken {
@@ -76,12 +77,13 @@ model Branch {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  resources     Resource[]
-  services      Service[]
-  businessHours BusinessHour[]
-  holidays      Holiday[]
-  appointments  Appointment[]
-  queues        Queue[]
+  resources       Resource[]
+  services        Service[]
+  businessHours   BusinessHour[]
+  holidays        Holiday[]
+  appointments    Appointment[]
+  queues          Queue[]
+  waitlistEntries Waitlist[]
 }
 
 model Service {
@@ -96,8 +98,9 @@ model Service {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  branch       Branch        @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  appointments Appointment[]
+  branch          Branch        @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  appointments    Appointment[]
+  waitlistEntries Waitlist[]
 
   @@index([branchId, active])
 }
@@ -198,4 +201,31 @@ model Queue {
   @@unique([branchId, queueDate, position])
   @@index([branchId, queueDate, status])
   @@index([userId, queueDate])
+}
+
+enum WaitlistStatus {
+  WAITING
+  OFFERED
+  BOOKED
+  CANCELLED
+  EXPIRED
+}
+
+model Waitlist {
+  id            Int            @id @default(autoincrement())
+  userId        Int
+  branchId      Int
+  serviceId     Int
+  requestedDate DateTime       @db.Date
+  requestedTime String?
+  status        WaitlistStatus @default(WAITING)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch  Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@index([branchId, serviceId, requestedDate, status])
+  @@index([userId, status])
 }

@@ -107,22 +107,29 @@ async function getAvailableSlots(
     };
   }
 
-  const hours = await prisma.businessHour.findUnique({
-    where: {
-      branchId_dayOfWeek: {
-        branchId,
-        dayOfWeek,
-      },
-    },
-  });
+  console.log("Checking business hours:", {
+  branchId,
+  dayOfWeek,
+});
 
-  if (!hours) {
-    return {
-      service,
-      slots: [] as string[],
-      message: "No working hours configured",
-    };
-  }
+const hours = await prisma.businessHour.findUnique({
+  where: {
+    branchId_dayOfWeek: {
+      branchId,
+      dayOfWeek,
+    },
+  },
+});
+
+console.log("Business hours found:", hours);
+
+if (!hours) {
+  return {
+    service,
+    slots: [] as string[],
+    message: "No working hours configured",
+  };
+}
 
   const open = timeToMinutes(hours.openTime);
   const close = timeToMinutes(hours.closeTime);
@@ -463,20 +470,59 @@ export async function bookAppointment(
         const appointmentNumber =
           `SAQ-${Date.now()}-${randomUUID().slice(0, 8)}`;
 
-        return tx.appointment.create({
-          data: {
-            appointmentNumber,
-            userId,
-            branchId,
-            serviceId,
-            appointmentDate,
-            startTime: startDateTime,
-            endTime: endDateTime,
-            notes,
-            idempotencyKey,
-            status: "CONFIRMED",
-          },
-        });
+        
+const createdAppointment = await tx.appointment.create({
+  data: {
+    appointmentNumber,
+    userId,
+    branchId,
+    serviceId,
+    appointmentDate,
+    startTime: startDateTime,
+    endTime: endDateTime,
+    notes,
+    idempotencyKey,
+    status: "CONFIRMED",
+  },
+});
+
+// Serialize queue-position allocation for this branch and date.
+const queueLockKey = `queue:${branchId}:${date}`;
+
+await tx.$executeRaw`
+  SELECT pg_advisory_xact_lock(
+    hashtext(${queueLockKey})::bigint
+  )
+`;
+
+// Find the current highest position for this branch and date.
+const lastQueueEntry = await tx.queue.aggregate({
+  where: {
+    branchId,
+    queueDate: appointmentDate,
+  },
+  _max: {
+    position: true,
+  },
+});
+
+const nextPosition =
+  (lastQueueEntry._max.position ?? 0) + 1;
+
+// Create the queue entry for this appointment.
+await tx.queue.create({
+  data: {
+    appointmentId: createdAppointment.id,
+    userId,
+    branchId,
+    queueDate: appointmentDate,
+    position: nextPosition,
+    priority: "NORMAL",
+    status: "WAITING",
+  },
+});
+
+return createdAppointment;
       },
       {
         isolationLevel:

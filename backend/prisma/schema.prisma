@@ -39,6 +39,13 @@ enum QueueStatus {
   NO_SHOW
 }
 
+enum ReservationStatus {
+  ACTIVE
+  EXPIRED
+  CONVERTED
+  CANCELLED
+}
+
 model User {
   id           Int      @id @default(autoincrement())
   name         String
@@ -52,6 +59,7 @@ model User {
   appointments    Appointment[]
   queues          Queue[]
   waitlistEntries Waitlist[]
+  reservations    Reservation[]
 }
 
 model RefreshToken {
@@ -84,6 +92,7 @@ model Branch {
   appointments    Appointment[]
   queues          Queue[]
   waitlistEntries Waitlist[]
+  reservations    Reservation[]
 }
 
 model Service {
@@ -101,6 +110,7 @@ model Service {
   branch          Branch        @relation(fields: [branchId], references: [id], onDelete: Restrict)
   appointments    Appointment[]
   waitlistEntries Waitlist[]
+  reservations    Reservation[]
 
   @@index([branchId, active])
 }
@@ -114,6 +124,7 @@ model Resource {
 
   branch               Branch                @relation(fields: [branchId], references: [id], onDelete: Restrict)
   appointmentResources AppointmentResource[]
+  reservations         Reservation[]
 
   @@index([branchId, active])
 }
@@ -227,5 +238,30 @@ model Waitlist {
   service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
 
   @@index([branchId, serviceId, requestedDate, status])
+  @@index([userId, status])
+}
+
+model Reservation {
+  id           Int               @id @default(autoincrement())
+  token        String            @unique
+  userId       Int
+  branchId     Int
+  serviceId    Int
+  reservedDate DateTime          @db.Date
+  startTime    DateTime
+  endTime      DateTime
+  expiresAt    DateTime
+  status       ReservationStatus @default(ACTIVE)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch     Branch    @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  service    Service   @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  resource   Resource? @relation(fields: [resourceId], references: [id])
+  resourceId Int?
+
+  @@index([branchId, serviceId, reservedDate, status])
+  @@index([expiresAt, status])
   @@index([userId, status])
 }

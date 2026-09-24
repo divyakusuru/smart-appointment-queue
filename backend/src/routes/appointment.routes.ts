@@ -13,19 +13,19 @@ import { authenticate } from "../middleware/auth";
 
 const router = Router();
 
-// Public: check available slots
+// Check available slots
 router.get("/availability", checkAvailability);
 
-// Customer: create booking
+// Create booking
 router.post("/", authenticate, bookAppointment);
 
-// Customer: list own appointments
+// List customer's appointments
 router.get("/mine", authenticate, getMyAppointments);
 
-// Customer: cancel own appointment
+// Cancel customer's appointment
 router.patch("/:id/cancel", authenticate, cancelAppointment);
 
-// Customer: reschedule own appointment
+// Reschedule customer's appointment
 router.patch("/:id/reschedule", authenticate, rescheduleAppointment);
 
 export default router;

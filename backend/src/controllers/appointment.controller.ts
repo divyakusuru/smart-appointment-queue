@@ -1,9 +1,11 @@
+
 import { Response } from "express";
 import { AuthRequest } from "../middleware/auth";
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../config/prisma";
+import { processWaitlistForSlot } from "../services/waitlist.service";
 
 // ---------- VALIDATION ----------
 
@@ -16,6 +18,10 @@ const availabilitySchema = z.object({
 const bookingSchema = availabilitySchema.extend({
   startTime: z.string().regex(/^\d{2}:\d{2}$/),
   notes: z.string().max(500).optional(),
+
+  // NEW: optional reservation token.
+  // Booking without a reservation remains supported.
+  reservationToken: z.string().uuid().optional(),
 });
 
 // ---------- HELPERS ----------
@@ -107,29 +113,22 @@ async function getAvailableSlots(
     };
   }
 
-  console.log("Checking business hours:", {
-  branchId,
-  dayOfWeek,
-});
-
-const hours = await prisma.businessHour.findUnique({
-  where: {
-    branchId_dayOfWeek: {
-      branchId,
-      dayOfWeek,
+  const hours = await prisma.businessHour.findUnique({
+    where: {
+      branchId_dayOfWeek: {
+        branchId,
+        dayOfWeek,
+      },
     },
-  },
-});
+  });
 
-console.log("Business hours found:", hours);
-
-if (!hours) {
-  return {
-    service,
-    slots: [] as string[],
-    message: "No working hours configured",
-  };
-}
+  if (!hours) {
+    return {
+      service,
+      slots: [] as string[],
+      message: "No working hours configured",
+    };
+  }
 
   const open = timeToMinutes(hours.openTime);
   const close = timeToMinutes(hours.closeTime);
@@ -143,6 +142,7 @@ if (!hours) {
     };
   }
 
+  // Existing appointments occupying capacity.
   const appointments = await prisma.appointment.findMany({
     where: {
       branchId,
@@ -158,7 +158,7 @@ if (!hours) {
     },
   });
 
-  const occupied = appointments.map((appointment) => ({
+  const occupiedAppointments = appointments.map((appointment) => ({
     start:
       appointment.startTime.getUTCHours() * 60 +
       appointment.startTime.getUTCMinutes(),
@@ -166,6 +166,38 @@ if (!hours) {
       appointment.endTime.getUTCHours() * 60 +
       appointment.endTime.getUTCMinutes(),
   }));
+
+  // NEW: active, unexpired reservations also occupy capacity.
+  const reservations = await prisma.reservation.findMany({
+    where: {
+      branchId,
+      serviceId,
+      reservedDate: appointmentDate,
+      status: "ACTIVE",
+      expiresAt: {
+        gt: new Date(),
+      },
+    },
+    select: {
+      startTime: true,
+      endTime: true,
+    },
+  });
+
+  const occupiedReservations = reservations.map((reservation) => ({
+    start:
+      reservation.startTime.getUTCHours() * 60 +
+      reservation.startTime.getUTCMinutes(),
+    end:
+      reservation.endTime.getUTCHours() * 60 +
+      reservation.endTime.getUTCMinutes(),
+  }));
+
+  // Combine appointment and reservation occupancy.
+  const occupied = [
+    ...occupiedAppointments,
+    ...occupiedReservations,
+  ];
 
   const slots: string[] = [];
 
@@ -187,9 +219,9 @@ if (!hours) {
       }
     }
 
-    // Capacity check based on overlapping appointments.
-    const overlappingCount = occupied.filter((appointment) =>
-      overlaps(start, end, appointment.start, appointment.end)
+    // Capacity check includes appointments and reservations.
+    const overlappingCount = occupied.filter((item) =>
+      overlaps(start, end, item.start, item.end)
     ).length;
 
     if (overlappingCount >= service.capacity) {
@@ -206,8 +238,6 @@ if (!hours) {
   };
 }
 
-// ---------- 1. CHECK AVAILABILITY ----------
-
 export async function checkAvailability(
   req: AuthRequest,
   res: Response
@@ -220,7 +250,7 @@ export async function checkAvailability(
         success: false,
         error: {
           code: "VALIDATION_ERROR",
-          message: "Provide valid branchId, serviceId and date",
+          message: "Invalid branchId, serviceId, or date",
         },
       });
     }
@@ -235,15 +265,7 @@ export async function checkAvailability(
 
     return res.json({
       success: true,
-      data: {
-        branchId,
-        serviceId,
-        date,
-        duration: result.service.duration,
-        capacity: result.service.capacity,
-        slots: result.slots,
-        message: result.message,
-      },
+      data: result,
     });
   } catch (error) {
     if (error instanceof Error) {
@@ -257,40 +279,32 @@ export async function checkAvailability(
         });
       }
 
-      if (error.message === "INVALID_BRANCH") {
+      if (
+        error.message === "INVALID_BRANCH" ||
+        error.message === "INVALID_SERVICE"
+      ) {
         return res.status(404).json({
           success: false,
           error: {
-            code: "INVALID_BRANCH",
-            message: "Branch not found or inactive",
-          },
-        });
-      }
-
-      if (error.message === "INVALID_SERVICE") {
-        return res.status(404).json({
-          success: false,
-          error: {
-            code: "INVALID_SERVICE",
-            message: "Service not found or inactive",
+            code: error.message,
+            message: "Branch or service not found",
           },
         });
       }
     }
 
-    console.error(error);
+    console.error("CHECK AVAILABILITY ERROR:", error);
 
     return res.status(500).json({
       success: false,
       error: {
         code: "INTERNAL_ERROR",
-        message: "Could not check availability",
+        message: "Could not retrieve availability",
       },
     });
   }
 }
 
-// ---------- 2. BOOK APPOINTMENT ----------
 
 export async function bookAppointment(
   req: AuthRequest,
@@ -321,8 +335,14 @@ export async function bookAppointment(
 
     const userId = req.user.id;
 
-    const { branchId, serviceId, date, startTime, notes } =
-      parsed.data;
+    const {
+      branchId,
+      serviceId,
+      date,
+      startTime,
+      notes,
+      reservationToken,
+    } = parsed.data;
 
     if (!isValidDate(date)) {
       return res.status(400).json({
@@ -393,7 +413,7 @@ export async function bookAppointment(
       `${date}T${minutesToTime(endMinutes)}:00.000Z`
     );
 
-    // A unique idempotency key makes retries safe.
+    // Require an idempotency key for safe retries.
     const idempotencyKey = req.get("Idempotency-Key");
 
     if (!idempotencyKey || idempotencyKey.length > 200) {
@@ -406,7 +426,7 @@ export async function bookAppointment(
       });
     }
 
-    // Return the original booking if the same user retries.
+    // Return an existing booking if this is a retry.
     const existing = await prisma.appointment.findUnique({
       where: {
         idempotencyKey,
@@ -433,12 +453,14 @@ export async function bookAppointment(
 
     const appointment = await prisma.$transaction(
       async (tx) => {
-        // Serialize booking attempts for this branch/service/date.
+        // Serialize booking and reservation attempts
+        // using the same branch/service/date lock.
         const lockKey = `${branchId}:${serviceId}:${date}`;
 
-        // SELECT returns a row, so use $queryRaw.
-       await tx.$executeRaw`
-  SELECT pg_advisory_xact_lock(hashtext(${lockKey})::bigint)
+        await tx.$executeRaw`
+  SELECT pg_advisory_xact_lock(
+    hashtext(${lockKey})::bigint
+  )
 `;
 
         // Check idempotency again inside the transaction.
@@ -456,73 +478,207 @@ export async function bookAppointment(
           return retry;
         }
 
-        // Recheck the slot while holding the lock.
+        // Validate the reservation, if supplied.
+        let reservation = null;
+
+        if (reservationToken) {
+          reservation = await tx.reservation.findUnique({
+            where: {
+              token: reservationToken,
+            },
+          });
+
+          if (
+            !reservation ||
+            reservation.userId !== userId ||
+            reservation.branchId !== branchId ||
+            reservation.serviceId !== serviceId ||
+            reservation.reservedDate.getTime() !==
+              appointmentDate.getTime() ||
+            reservation.status !== "ACTIVE" ||
+            reservation.expiresAt <= new Date()
+          ) {
+            throw new Error("RESERVATION_INVALID");
+          }
+
+          const reservationStartMinutes =
+            reservation.startTime.getUTCHours() * 60 +
+            reservation.startTime.getUTCMinutes();
+
+          if (reservationStartMinutes !== startMinutes) {
+            throw new Error("RESERVATION_SLOT_MISMATCH");
+          }
+        }
+
+        // Recheck availability while holding the lock.
         const availability = await getAvailableSlots(
           branchId,
           serviceId,
           date
         );
 
+        // A valid reservation occupies capacity itself.
+        // When booking with that reservation, allow its own
+        // reserved slot even if the reservation fills capacity.
         if (!availability.slots.includes(startTime)) {
-          throw new Error("SLOT_UNAVAILABLE");
+          if (!reservation) {
+            throw new Error("SLOT_UNAVAILABLE");
+          }
+
+          // Recalculate availability excluding this reservation.
+          const otherReservations =
+            await tx.reservation.findMany({
+              where: {
+                branchId,
+                serviceId,
+                reservedDate: appointmentDate,
+                status: "ACTIVE",
+                expiresAt: {
+                  gt: new Date(),
+                },
+                NOT: {
+                  token: reservationToken,
+                },
+              },
+              select: {
+                startTime: true,
+                endTime: true,
+              },
+            });
+
+          const appointments = await tx.appointment.findMany({
+            where: {
+              branchId,
+              serviceId,
+              appointmentDate,
+              status: {
+                in: [
+                  "PENDING",
+                  "CONFIRMED",
+                  "CHECKED_IN",
+                  "IN_PROGRESS",
+                ],
+              },
+            },
+            select: {
+              startTime: true,
+              endTime: true,
+            },
+          });
+
+          const occupied = [
+            ...appointments.map((item) => ({
+              start:
+                item.startTime.getUTCHours() * 60 +
+                item.startTime.getUTCMinutes(),
+              end:
+                item.endTime.getUTCHours() * 60 +
+                item.endTime.getUTCMinutes(),
+            })),
+            ...otherReservations.map((item) => ({
+              start:
+                item.startTime.getUTCHours() * 60 +
+                item.startTime.getUTCMinutes(),
+              end:
+                item.endTime.getUTCHours() * 60 +
+                item.endTime.getUTCMinutes(),
+            })),
+          ];
+
+          const conflictingCount = occupied.filter((item) =>
+            overlaps(
+              startMinutes,
+              endMinutes,
+              item.start,
+              item.end
+            )
+          ).length;
+
+          if (conflictingCount >= service.capacity) {
+            throw new Error("SLOT_UNAVAILABLE");
+          }
         }
 
         const appointmentNumber =
           `SAQ-${Date.now()}-${randomUUID().slice(0, 8)}`;
 
-        
-const createdAppointment = await tx.appointment.create({
-  data: {
-    appointmentNumber,
-    userId,
-    branchId,
-    serviceId,
-    appointmentDate,
-    startTime: startDateTime,
-    endTime: endDateTime,
-    notes,
-    idempotencyKey,
-    status: "CONFIRMED",
-  },
-});
+        const createdAppointment = await tx.appointment.create({
+          data: {
+            appointmentNumber,
+            userId,
+            branchId,
+            serviceId,
+            appointmentDate,
+            startTime: startDateTime,
+            endTime: endDateTime,
+            notes,
+            idempotencyKey,
+            status: "CONFIRMED",
+          },
+        });
 
-// Serialize queue-position allocation for this branch and date.
-const queueLockKey = `queue:${branchId}:${date}`;
+        // Convert the reservation after successful creation.
+        // Convert the reservation after successful creation.
+if (reservation) {
+  await tx.reservation.update({
+    where: {
+      id: reservation.id,
+    },
+    data: {
+      status: "CONVERTED",
+    },
+  });
 
-await tx.$executeRaw`
+  // If this reservation came from a waitlist offer,
+  // mark that waitlist entry as BOOKED.
+  await tx.waitlist.updateMany({
+    where: {
+      userId,
+      branchId,
+      serviceId,
+      requestedDate: appointmentDate,
+      status: "OFFERED",
+    },
+    data: {
+      status: "BOOKED",
+    },
+  });
+}
+        // Serialize queue-position allocation.
+        const queueLockKey = `queue:${branchId}:${date}`;
+
+        await tx.$executeRaw`
   SELECT pg_advisory_xact_lock(
     hashtext(${queueLockKey})::bigint
   )
 `;
 
-// Find the current highest position for this branch and date.
-const lastQueueEntry = await tx.queue.aggregate({
-  where: {
-    branchId,
-    queueDate: appointmentDate,
-  },
-  _max: {
-    position: true,
-  },
-});
+        const lastQueueEntry = await tx.queue.aggregate({
+          where: {
+            branchId,
+            queueDate: appointmentDate,
+          },
+          _max: {
+            position: true,
+          },
+        });
 
-const nextPosition =
-  (lastQueueEntry._max.position ?? 0) + 1;
+        const nextPosition =
+          (lastQueueEntry._max.position ?? 0) + 1;
 
-// Create the queue entry for this appointment.
-await tx.queue.create({
-  data: {
-    appointmentId: createdAppointment.id,
-    userId,
-    branchId,
-    queueDate: appointmentDate,
-    position: nextPosition,
-    priority: "NORMAL",
-    status: "WAITING",
-  },
-});
+        await tx.queue.create({
+          data: {
+            appointmentId: createdAppointment.id,
+            userId,
+            branchId,
+            queueDate: appointmentDate,
+            position: nextPosition,
+            priority: "NORMAL",
+            status: "WAITING",
+          },
+        });
 
-return createdAppointment;
+        return createdAppointment;
       },
       {
         isolationLevel:
@@ -556,9 +712,30 @@ return createdAppointment;
           },
         });
       }
+
+      if (error.message === "RESERVATION_INVALID") {
+        return res.status(409).json({
+          success: false,
+          error: {
+            code: "RESERVATION_INVALID",
+            message:
+              "Reservation is invalid, expired, or does not belong to you",
+          },
+        });
+      }
+
+      if (error.message === "RESERVATION_SLOT_MISMATCH") {
+        return res.status(409).json({
+          success: false,
+          error: {
+            code: "RESERVATION_SLOT_MISMATCH",
+            message:
+              "The selected time does not match the reservation",
+          },
+        });
+      }
     }
 
-    // Prisma unique constraint conflict, such as a concurrent retry.
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2002"
@@ -572,24 +749,18 @@ return createdAppointment;
       });
     }
 
-    console.error(error);
-
     console.error("BOOK APPOINTMENT ERROR:", error);
 
-return res.status(500).json({
-  success: false,
-  error: {
-    code: "INTERNAL_ERROR",
-    message:
-      error instanceof Error
-        ? error.message
-        : "Unknown booking error",
-  },
-});
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: "INTERNAL_ERROR",
+        message: "Could not book appointment",
+      },
+    });
   }
 }
 
-// ---------- 3. MY APPOINTMENTS ----------
 
 export async function getMyAppointments(
   req: AuthRequest,
@@ -629,7 +800,7 @@ export async function getMyAppointments(
       data: appointments,
     });
   } catch (error) {
-    console.error(error);
+    console.error("GET MY APPOINTMENTS ERROR:", error);
 
     return res.status(500).json({
       success: false,
@@ -641,7 +812,6 @@ export async function getMyAppointments(
   }
 }
 
-// ---------- 4. CANCEL APPOINTMENT ----------
 
 export async function cancelAppointment(
   req: AuthRequest,
@@ -664,7 +834,7 @@ export async function cancelAppointment(
       return res.status(400).json({
         success: false,
         error: {
-          code: "VALIDATION_ERROR",
+          code: "INVALID_ID",
           message: "Invalid appointment ID",
         },
       });
@@ -688,33 +858,55 @@ export async function cancelAppointment(
     }
 
     if (
-      !["PENDING", "CONFIRMED"].includes(appointment.status)
+      !["PENDING", "CONFIRMED"].includes(
+        appointment.status
+      )
     ) {
       return res.status(409).json({
         success: false,
         error: {
           code: "INVALID_STATUS",
-          message: "This appointment cannot be cancelled now",
+          message: "This appointment cannot be cancelled",
         },
       });
     }
 
-    const updated = await prisma.appointment.update({
-      where: {
-        id,
-      },
-      data: {
-        status: "CANCELLED",
-      },
-    });
+    const updated = await prisma.$transaction(async (tx) => {
+      const cancelled = await tx.appointment.update({
+        where: { id },
+        data: { status: "CANCELLED" },
+      });
 
-    return res.json({
-      success: true,
-      data: updated,
-      message: "Appointment cancelled",
+      await tx.queue.updateMany({
+        where: {
+          appointmentId: id,
+          status: {
+            in: ["WAITING", "CALLED"],
+          },
+        },
+        data: {
+          status: "CANCELLED",
+        },
+      });
+
+      return cancelled;
     });
+    const waitlistOffer = await processWaitlistForSlot({
+  branchId: updated.branchId,
+  serviceId: updated.serviceId,
+  appointmentDate: updated.appointmentDate,
+  startTime: updated.startTime,
+  endTime: updated.endTime,
+});
+
+   return res.json({
+  success: true,
+  data: updated,
+  waitlistOffer,
+  message: "Appointment cancelled",
+});
   } catch (error) {
-    console.error(error);
+    console.error("CANCEL APPOINTMENT ERROR:", error);
 
     return res.status(500).json({
       success: false,
@@ -726,7 +918,6 @@ export async function cancelAppointment(
   }
 }
 
-// ---------- 5. RESCHEDULE APPOINTMENT ----------
 
 export async function rescheduleAppointment(
   req: AuthRequest,
@@ -797,7 +988,6 @@ export async function rescheduleAppointment(
     }
 
     const { date, startTime } = parsed.data;
-
     const startMinutes = timeToMinutes(startTime);
 
     if (
@@ -814,13 +1004,33 @@ export async function rescheduleAppointment(
       });
     }
 
+    const appointmentDate = dateFromString(date);
+
     const availability = await getAvailableSlots(
       current.branchId,
       current.serviceId,
       date
     );
 
-    if (!availability.slots.includes(startTime)) {
+    // Exclude this appointment from occupancy when
+    // rescheduling on the same date.
+    const ownStart =
+      current.startTime.getUTCHours() * 60 +
+      current.startTime.getUTCMinutes();
+
+    const ownEnd =
+      current.endTime.getUTCHours() * 60 +
+      current.endTime.getUTCMinutes();
+
+    const isSameSlot =
+      current.appointmentDate.getTime() ===
+        appointmentDate.getTime() &&
+      ownStart === startMinutes;
+
+    if (
+      !availability.slots.includes(startTime) &&
+      !isSameSlot
+    ) {
       return res.status(409).json({
         success: false,
         error: {
@@ -833,20 +1043,61 @@ export async function rescheduleAppointment(
     const endMinutes =
       startMinutes + availability.service.duration;
 
-    const updated = await prisma.appointment.update({
-      where: {
-        id,
+    if (endMinutes > 24 * 60) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_TIME",
+          message: "Appointment ends outside the day",
+        },
+      });
+    }
+
+    const updated = await prisma.$transaction(
+      async (tx) => {
+        const lockKey =
+          `${current.branchId}:${current.serviceId}:${date}`;
+
+        await tx.$executeRaw`
+  SELECT pg_advisory_xact_lock(
+    hashtext(${lockKey})::bigint
+  )
+`;
+
+        // Recheck availability after obtaining the lock.
+        const lockedAvailability = await getAvailableSlots(
+          current.branchId,
+          current.serviceId,
+          date
+        );
+
+        if (
+          !lockedAvailability.slots.includes(startTime) &&
+          !isSameSlot
+        ) {
+          throw new Error("SLOT_UNAVAILABLE");
+        }
+
+        return tx.appointment.update({
+          where: {
+            id,
+          },
+          data: {
+            appointmentDate,
+            startTime: new Date(
+              `${date}T${startTime}:00.000Z`
+            ),
+            endTime: new Date(
+              `${date}T${minutesToTime(endMinutes)}:00.000Z`
+            ),
+          },
+        });
       },
-      data: {
-        appointmentDate: dateFromString(date),
-        startTime: new Date(
-          `${date}T${startTime}:00.000Z`
-        ),
-        endTime: new Date(
-          `${date}T${minutesToTime(endMinutes)}:00.000Z`
-        ),
-      },
-    });
+      {
+        isolationLevel:
+          Prisma.TransactionIsolationLevel.Serializable,
+      }
+    );
 
     return res.json({
       success: true,
@@ -854,7 +1105,18 @@ export async function rescheduleAppointment(
       message: "Appointment rescheduled",
     });
   } catch (error) {
-    console.error(error);
+    if (error instanceof Error &&
+        error.message === "SLOT_UNAVAILABLE") {
+      return res.status(409).json({
+        success: false,
+        error: {
+          code: "SLOT_UNAVAILABLE",
+          message: "Requested slot is unavailable",
+        },
+      });
+    }
+
+    console.error("RESCHEDULE APPOINTMENT ERROR:", error);
 
     return res.status(500).json({
       success: false,

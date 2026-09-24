@@ -13,6 +13,7 @@ import waitlistRoutes from "./routes/waitlist.routes";
 import reservationRoutes from "./routes/reservation.routes";
 import "./services/reservation.expiry.worker";
 import notificationRoutes from "./routes/notification.routes";
+import { apiRateLimiter } from "./middleware/rateLimiter";
 
 const app = express();
 
@@ -37,6 +38,7 @@ app.use("/api/queue", queueRoutes);
 app.use("/api/waitlist", waitlistRoutes);
 app.use("/api/reservations", reservationRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api", apiRateLimiter);
 
 app.get("/api/health", (_req, res) => {
   res.json({

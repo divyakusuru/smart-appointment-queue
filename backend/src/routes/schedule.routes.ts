@@ -8,6 +8,15 @@ import {
 
 const router = Router();
 
+ 
+
+router.get("/test-resource-route", (_req, res) => {
+  return res.json({
+    success: true,
+    message: "Resource route file is loaded",
+  });
+});
+
 const scheduleSchema = z.object({
   dayOfWeek: z.number().int().min(0).max(6),
   openTime: z.string().regex(/^\d{2}:\d{2}$/),

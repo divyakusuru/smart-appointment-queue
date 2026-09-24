@@ -12,9 +12,12 @@ const queueQuerySchema = z.object({
 });
 const walkInSchema = z.object({
   name: z.string().min(2).max(100),
+  phone: z.string().regex(/^[0-9]{10}$/),
   branchId: z.coerce.number().int().positive(),
   serviceId: z.coerce.number().int().positive(),
-  priority: z.enum(["NORMAL", "PRIORITY", "EMERGENCY"]).default("NORMAL"),
+  priority: z
+    .enum(["NORMAL", "PRIORITY", "EMERGENCY"])
+    .default("NORMAL"),
 });
 
 // POST /api/queue/walk-in
@@ -50,11 +53,12 @@ export const addWalkIn = async (
     }
 
     const {
-      name,
-      branchId,
-      serviceId,
-      priority,
-    } = parsed.data;
+  name,
+  phone,
+  branchId,
+  serviceId,
+  priority,
+} = parsed.data;
 
     const result = await prisma.$transaction(
       async (tx) => {
@@ -110,6 +114,16 @@ export const addWalkIn = async (
         );
 
         // 5. Find the last queue position
+        await tx.$executeRaw`
+  SELECT pg_advisory_xact_lock(
+    hashtext(
+      ${`walkin:${branchId}:${appointmentDate
+        .toISOString()
+        .slice(0, 10)}`}
+    )
+  )
+`;
+
         const lastQueue = await tx.queue.findFirst({
           where: {
             branchId,
@@ -143,7 +157,7 @@ export const addWalkIn = async (
             startTime,
             endTime,
             status: "CHECKED_IN",
-            notes: "Walk-in customer",
+            notes: `Walk-in customer | Phone: ${phone}`,
           },
         });
 
@@ -173,6 +187,8 @@ export const addWalkIn = async (
         isolationLevel: "Serializable",
       }
     );
+
+    
 
     return res.status(201).json({
       success: true,
@@ -439,6 +455,7 @@ const nextCustomer = waitingCustomers[0];
   }
 };
 // GET /api/queue/mine
+// GET /api/queue/mine
 export const getMyQueuePosition = async (
   req: AuthRequest,
   res: Response
@@ -464,47 +481,62 @@ export const getMyQueuePosition = async (
 
     const { branchId, date } = parsed.data;
 
-    const appointments = await prisma.appointment.findMany({
+    const queueDate = new Date(`${date}T00:00:00.000Z`);
+
+    const myEntries = await prisma.queue.findMany({
       where: {
+        userId,
         branchId,
-        appointmentDate: new Date(`${date}T00:00:00.000Z`),
-        status: {
-          not: "CANCELLED",
+        queueDate,
+      },
+      include: {
+        appointment: {
+          include: {
+            service: true,
+          },
         },
       },
-      orderBy: [
-        { startTime: "asc" },
-        { id: "asc" },
-      ],
-      select: {
-        id: true,
-        appointmentNumber: true,
-        userId: true,
-        serviceId: true,
-        startTime: true,
-        endTime: true,
-        status: true,
+      orderBy: {
+        position: "asc",
       },
     });
 
-    const myAppointments = appointments.filter(
-      (appointment) => appointment.userId === userId
-    );
+    const waitingQueue = await prisma.queue.findMany({
+      where: {
+        branchId,
+        queueDate,
+        status: "WAITING",
+      },
+      orderBy: {
+        position: "asc",
+      },
+    });
 
-    const queue = myAppointments.map((appointment) => {
-      const position =
-        appointments.findIndex(
-          (item) => item.id === appointment.id
-        ) + 1;
+    const queue = myEntries.map((entry) => {
+      let position: number | null = null;
+
+      if (entry.status === "WAITING") {
+        const index = waitingQueue.findIndex(
+          (item) => item.id === entry.id
+        );
+
+        position = index >= 0 ? index + 1 : null;
+      }
 
       return {
-        appointmentId: appointment.id,
-        appointmentNumber: appointment.appointmentNumber,
-        serviceId: appointment.serviceId,
-        startTime: appointment.startTime,
-        endTime: appointment.endTime,
-        status: appointment.status,
+        queueId: entry.id,
+        appointmentId: entry.appointmentId,
+        appointmentNumber:
+          entry.appointment.appointmentNumber,
+        serviceId: entry.appointment.serviceId,
+        serviceName:
+          entry.appointment.service.name,
+        priority: entry.priority,
+        status: entry.status,
         queuePosition: position,
+        calledAt: entry.calledAt,
+        startTime: entry.appointment.startTime,
+        endTime: entry.appointment.endTime,
       };
     });
 

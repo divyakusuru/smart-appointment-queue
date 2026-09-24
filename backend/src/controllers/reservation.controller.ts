@@ -175,53 +175,154 @@ export async function createReservation(
         });
 
         // Check existing appointments.
-        const appointments = await tx.appointment.findMany({
-          where: {
-            branchId,
-            serviceId,
-            appointmentDate,
-            status: {
-              in: [
-                "PENDING",
-                "CONFIRMED",
-                "CHECKED_IN",
-                "IN_PROGRESS",
-              ],
-            },
-          },
-          select: {
-            startTime: true,
-            endTime: true,
-          },
-        });
+                // --------------------------------------------------
+        // Get resources assigned to this service
+        // --------------------------------------------------
 
-        const appointmentConflict = appointments.some((appointment) =>
-          overlaps(
-            startMinutes,
-            endMinutes,
-            appointment.startTime.getUTCHours() * 60 +
-              appointment.startTime.getUTCMinutes(),
-            appointment.endTime.getUTCHours() * 60 +
-              appointment.endTime.getUTCMinutes()
-          )
+        const serviceResources =
+          await tx.serviceResource.findMany({
+            where: {
+              serviceId,
+              resource: {
+                active: true,
+              },
+            },
+            select: {
+              resourceId: true,
+            },
+          });
+
+        const resourceIds = serviceResources.map(
+          (item) => item.resourceId
         );
 
-        if (appointmentConflict) {
-          throw new Error("SLOT_UNAVAILABLE");
-        }
+        // --------------------------------------------------
+        // Check existing appointments
+        // --------------------------------------------------
 
-        // Check active reservations.
-        const reservations = await tx.reservation.findMany({
-          where: {
-            branchId,
-            serviceId,
-            reservedDate: appointmentDate,
-            status: "ACTIVE",
-            expiresAt: {
-              gt: now,
+        const appointments =
+          await tx.appointment.findMany({
+            where: {
+              branchId,
+              serviceId,
+              appointmentDate,
+              status: {
+                in: [
+                  "PENDING",
+                  "CONFIRMED",
+                  "CHECKED_IN",
+                  "IN_PROGRESS",
+                ],
+              },
             },
-          },
-        });
+            select: {
+              startTime: true,
+              endTime: true,
+              resources: {
+                select: {
+                  resourceId: true,
+                },
+              },
+            },
+          });
+
+        const overlappingAppointments =
+          appointments.filter((appointment) =>
+            overlaps(
+              startMinutes,
+              endMinutes,
+              appointment.startTime.getUTCHours() * 60 +
+                appointment.startTime.getUTCMinutes(),
+              appointment.endTime.getUTCHours() * 60 +
+                appointment.endTime.getUTCMinutes()
+            )
+          );
+
+        // --------------------------------------------------
+        // Check active reservations
+        // --------------------------------------------------
+
+        const reservations =
+          await tx.reservation.findMany({
+            where: {
+              branchId,
+              serviceId,
+              reservedDate: appointmentDate,
+              status: "ACTIVE",
+              expiresAt: {
+                gt: now,
+              },
+            },
+            select: {
+              id: true,
+              token: true,
+              startTime: true,
+              endTime: true,
+              resourceId: true,
+            },
+          });
+
+        const overlappingReservations =
+          reservations.filter((reservation) =>
+            overlaps(
+              startMinutes,
+              endMinutes,
+              reservation.startTime.getUTCHours() * 60 +
+                reservation.startTime.getUTCMinutes(),
+              reservation.endTime.getUTCHours() * 60 +
+                reservation.endTime.getUTCMinutes()
+            )
+          );
+
+        // --------------------------------------------------
+        // Resource-aware availability
+        // --------------------------------------------------
+
+        let selectedResourceId: number | null = null;
+
+        if (resourceIds.length > 0) {
+          const occupiedResourceIds = new Set<number>();
+
+          // Resources occupied by appointments
+          for (const appointment of overlappingAppointments) {
+            for (const resource of appointment.resources) {
+              occupiedResourceIds.add(resource.resourceId);
+            }
+          }
+
+          // Resources occupied by reservations
+          for (const reservation of overlappingReservations) {
+            if (reservation.resourceId !== null) {
+              occupiedResourceIds.add(
+                reservation.resourceId
+              );
+            }
+          }
+
+          // Find one free resource.
+          selectedResourceId =
+            resourceIds.find(
+              (resourceId) =>
+                !occupiedResourceIds.has(resourceId)
+            ) ?? null;
+
+          if (selectedResourceId === null) {
+            throw new Error("RESOURCE_UNAVAILABLE");
+          }
+        } else {
+          // ------------------------------------------------
+          // No resources assigned:
+          // use normal service capacity
+          // ------------------------------------------------
+
+          const totalOccupied =
+            overlappingAppointments.length +
+            overlappingReservations.length;
+
+          if (totalOccupied >= service.capacity) {
+            throw new Error("SLOT_UNAVAILABLE");
+          }
+        }
 
         const reservationConflict = reservations.some((reservation) =>
           overlaps(
@@ -242,19 +343,20 @@ export async function createReservation(
           Date.now() + 5 * 60 * 1000
         );
 
-        return tx.reservation.create({
-          data: {
-            token: randomUUID(),
-            userId: req.user!.id,
-            branchId,
-            serviceId,
-            reservedDate: appointmentDate,
-            startTime: startDateTime,
-            endTime: endDateTime,
-            expiresAt,
-            status: "ACTIVE",
-          },
-        });
+       return tx.reservation.create({
+  data: {
+    token: randomUUID(),
+    userId: req.user!.id,
+    branchId,
+    serviceId,
+    reservedDate: appointmentDate,
+    startTime: startDateTime,
+    endTime: endDateTime,
+    expiresAt,
+    status: "ACTIVE",
+    resourceId: selectedResourceId,
+  },
+});
       },
       {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
@@ -311,7 +413,18 @@ export async function createReservation(
           success: false,
           error: {
             code: "SLOT_RESERVED",
-            message: "This slot is temporarily reserved by another customer",
+            message:
+              "This slot is temporarily reserved by another customer",
+          },
+        });
+      }
+
+      if (error.message === "RESOURCE_UNAVAILABLE") {
+        return res.status(409).json({
+          success: false,
+          error: {
+            code: "RESOURCE_UNAVAILABLE",
+            message: "No required resource is available for this slot",
           },
         });
       }

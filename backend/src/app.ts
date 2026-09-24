@@ -12,6 +12,7 @@ import queueRoutes from "./routes/queue.routes";
 import waitlistRoutes from "./routes/waitlist.routes";
 import reservationRoutes from "./routes/reservation.routes";
 import "./services/reservation.expiry.worker";
+import notificationRoutes from "./routes/notification.routes";
 
 const app = express();
 
@@ -35,6 +36,7 @@ app.use("/api/appointments", appointmentRoutes);
 app.use("/api/queue", queueRoutes);
 app.use("/api/waitlist", waitlistRoutes);
 app.use("/api/reservations", reservationRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 app.get("/api/health", (_req, res) => {
   res.json({

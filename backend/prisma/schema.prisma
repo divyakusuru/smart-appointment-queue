@@ -60,6 +60,7 @@ model User {
   queues          Queue[]
   waitlistEntries Waitlist[]
   reservations    Reservation[]
+  notifications Notification[]
 }
 
 model RefreshToken {
@@ -205,6 +206,21 @@ model AppointmentResource {
 
   @@unique([appointmentId, resourceId])
   @@index([resourceId])
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  type      String
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([createdAt])
 }
 
 model Queue {

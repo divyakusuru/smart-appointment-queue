@@ -93,7 +93,7 @@ async function getAvailableSlots(
     throw new Error("INVALID_SERVICE");
   }
 
-  // JavaScript: Sunday = 0, Monday = 1, ..., Saturday = 6
+  // Sunday = 0, Monday = 1, ..., Saturday = 6
   const dayOfWeek = appointmentDate.getUTCDay();
 
   const holiday = await prisma.holiday.findUnique({
@@ -142,32 +142,75 @@ async function getAvailableSlots(
     };
   }
 
-  // Existing appointments occupying capacity.
+  // --------------------------------------------------
+  // 1. Get resources assigned to this service
+  // --------------------------------------------------
+
+  const serviceResources = await prisma.serviceResource.findMany({
+    where: {
+      serviceId,
+      resource: {
+        active: true,
+      },
+    },
+    select: {
+      resourceId: true,
+    },
+  });
+
+  const resourceIds = serviceResources.map(
+    (item) => item.resourceId
+  );
+
+  // --------------------------------------------------
+  // 2. Existing appointments
+  // --------------------------------------------------
+
   const appointments = await prisma.appointment.findMany({
     where: {
       branchId,
       serviceId,
       appointmentDate,
       status: {
-        in: ["PENDING", "CONFIRMED", "CHECKED_IN", "IN_PROGRESS"],
+        in: [
+          "PENDING",
+          "CONFIRMED",
+          "CHECKED_IN",
+          "IN_PROGRESS",
+        ],
       },
     },
     select: {
       startTime: true,
       endTime: true,
+      resources: {
+        select: {
+          resourceId: true,
+        },
+      },
     },
   });
 
-  const occupiedAppointments = appointments.map((appointment) => ({
-    start:
-      appointment.startTime.getUTCHours() * 60 +
-      appointment.startTime.getUTCMinutes(),
-    end:
-      appointment.endTime.getUTCHours() * 60 +
-      appointment.endTime.getUTCMinutes(),
-  }));
+  const occupiedAppointments = appointments.map(
+    (appointment) => ({
+      start:
+        appointment.startTime.getUTCHours() * 60 +
+        appointment.startTime.getUTCMinutes(),
 
-  // NEW: active, unexpired reservations also occupy capacity.
+      end:
+        appointment.endTime.getUTCHours() * 60 +
+        appointment.endTime.getUTCMinutes(),
+
+      resourceIds: appointment.resources.map(
+        (resource) => resource.resourceId
+      ),
+    })
+  );
+
+  // --------------------------------------------------
+  // 3. Active reservations
+  // --------------------------------------------------
+
   const reservations = await prisma.reservation.findMany({
     where: {
       branchId,
@@ -181,23 +224,27 @@ async function getAvailableSlots(
     select: {
       startTime: true,
       endTime: true,
+      resourceId: true,
     },
   });
 
-  const occupiedReservations = reservations.map((reservation) => ({
-    start:
-      reservation.startTime.getUTCHours() * 60 +
-      reservation.startTime.getUTCMinutes(),
-    end:
-      reservation.endTime.getUTCHours() * 60 +
-      reservation.endTime.getUTCMinutes(),
-  }));
+  const occupiedReservations = reservations.map(
+    (reservation) => ({
+      start:
+        reservation.startTime.getUTCHours() * 60 +
+        reservation.startTime.getUTCMinutes(),
 
-  // Combine appointment and reservation occupancy.
-  const occupied = [
-    ...occupiedAppointments,
-    ...occupiedReservations,
-  ];
+      end:
+        reservation.endTime.getUTCHours() * 60 +
+        reservation.endTime.getUTCMinutes(),
+
+      resourceId: reservation.resourceId,
+    })
+  );
+
+  // --------------------------------------------------
+  // 4. Generate available slots
+  // --------------------------------------------------
 
   const slots: string[] = [];
 
@@ -209,7 +256,10 @@ async function getAvailableSlots(
   ) {
     const end = start + duration;
 
-    // Exclude slots that overlap a configured break.
+    // -----------------------------------------------
+    // Break check
+    // -----------------------------------------------
+
     if (hours.breakStart && hours.breakEnd) {
       const breakStart = timeToMinutes(hours.breakStart);
       const breakEnd = timeToMinutes(hours.breakEnd);
@@ -219,13 +269,71 @@ async function getAvailableSlots(
       }
     }
 
-    // Capacity check includes appointments and reservations.
-    const overlappingCount = occupied.filter((item) =>
-      overlaps(start, end, item.start, item.end)
-    ).length;
+    // -----------------------------------------------
+    // Capacity check
+    // -----------------------------------------------
 
-    if (overlappingCount >= service.capacity) {
+    const overlappingAppointments =
+      occupiedAppointments.filter((appointment) =>
+        overlaps(
+          start,
+          end,
+          appointment.start,
+          appointment.end
+        )
+      );
+
+    const overlappingReservations =
+      occupiedReservations.filter((reservation) =>
+        overlaps(
+          start,
+          end,
+          reservation.start,
+          reservation.end
+        )
+      );
+
+    const totalOccupied =
+      overlappingAppointments.length +
+      overlappingReservations.length;
+
+    if (totalOccupied >= service.capacity) {
       continue;
+    }
+
+    // -----------------------------------------------
+    // Resource check
+    // -----------------------------------------------
+
+    // If this service has no resources assigned,
+    // availability depends only on service capacity.
+    if (resourceIds.length > 0) {
+      const occupiedResourceIds = new Set<number>();
+
+      // Resources occupied by appointments
+      for (const appointment of overlappingAppointments) {
+        for (const resourceId of appointment.resourceIds) {
+          occupiedResourceIds.add(resourceId);
+        }
+      }
+
+      // Resources occupied by active reservations
+      for (const reservation of overlappingReservations) {
+        if (reservation.resourceId !== null) {
+          occupiedResourceIds.add(reservation.resourceId);
+        }
+      }
+
+      // Find resources that are still free.
+      const availableResourceCount = resourceIds.filter(
+        (resourceId) =>
+          !occupiedResourceIds.has(resourceId)
+      ).length;
+
+      // For now, one resource is required for one booking.
+      if (availableResourceCount === 0) {
+        continue;
+      }
     }
 
     slots.push(minutesToTime(start));
@@ -412,7 +520,86 @@ export async function bookAppointment(
     const endDateTime = new Date(
       `${date}T${minutesToTime(endMinutes)}:00.000Z`
     );
+     
+    // --------------------------------------------------
+// Validate business hours and holidays
+// --------------------------------------------------
 
+const dayOfWeek = appointmentDate.getUTCDay();
+
+// Check holiday
+const holiday = await prisma.holiday.findFirst({
+  where: {
+    branchId,
+    date: appointmentDate,
+  },
+});
+
+if (holiday) {
+  return res.status(409).json({
+    success: false,
+    error: {
+      code: "BRANCH_CLOSED",
+      message: "Branch is closed on this date",
+    },
+  });
+}
+
+// Get business hours
+const businessHour = await prisma.businessHour.findFirst({
+  where: {
+    branchId,
+    dayOfWeek,
+  },
+});
+
+if (!businessHour) {
+  return res.status(409).json({
+    success: false,
+    error: {
+      code: "BRANCH_CLOSED",
+      message: "Branch is closed on this day",
+    },
+  });
+}
+
+const openMinutes = timeToMinutes(businessHour.openTime);
+const closeMinutes = timeToMinutes(businessHour.closeTime);
+
+if (
+  startMinutes < openMinutes ||
+  endMinutes > closeMinutes
+) {
+  return res.status(409).json({
+    success: false,
+    error: {
+      code: "OUTSIDE_BUSINESS_HOURS",
+      message: "Selected time is outside business hours",
+    },
+  });
+}
+
+// Check break
+if (
+  businessHour.breakStart &&
+  businessHour.breakEnd
+) {
+  const breakStart = timeToMinutes(businessHour.breakStart);
+  const breakEnd = timeToMinutes(businessHour.breakEnd);
+
+  if (
+    startMinutes < breakEnd &&
+    endMinutes > breakStart
+  ) {
+    return res.status(409).json({
+      success: false,
+      error: {
+        code: "BREAK_TIME",
+        message: "Selected time falls during the branch break",
+      },
+    });
+  }
+}
     // Require an idempotency key for safe retries.
     const idempotencyKey = req.get("Idempotency-Key");
 
@@ -599,23 +786,151 @@ export async function bookAppointment(
           }
         }
 
-        const appointmentNumber =
-          `SAQ-${Date.now()}-${randomUUID().slice(0, 8)}`;
+        // Find a free resource for this appointment
+const serviceResources = await tx.serviceResource.findMany({
+  where: {
+    serviceId,
+    resource: {
+      active: true,
+    },
+  },
+  select: {
+    resourceId: true,
+  },
+});
 
-        const createdAppointment = await tx.appointment.create({
-          data: {
-            appointmentNumber,
-            userId,
-            branchId,
-            serviceId,
-            appointmentDate,
-            startTime: startDateTime,
-            endTime: endDateTime,
-            notes,
-            idempotencyKey,
-            status: "CONFIRMED",
+const resourceIds = serviceResources.map(
+  (item) => item.resourceId
+);
+
+// If reservation already has a resource, use it.
+let selectedResourceId: number | null =
+  reservation?.resourceId ?? null;
+
+// If service has resources but reservation doesn't have one,
+// find a free resource.
+if (
+  resourceIds.length > 0 &&
+  selectedResourceId === null
+) {
+  const conflictingAppointments =
+    await tx.appointment.findMany({
+      where: {
+        branchId,
+        serviceId,
+        appointmentDate,
+        status: {
+          in: [
+            "PENDING",
+            "CONFIRMED",
+            "CHECKED_IN",
+            "IN_PROGRESS",
+          ],
+        },
+        startTime: {
+          lt: endDateTime,
+        },
+        endTime: {
+          gt: startDateTime,
+        },
+      },
+      select: {
+        resources: {
+          select: {
+            resourceId: true,
           },
-        });
+        },
+      },
+    });
+
+  const occupiedResourceIds = new Set<number>();
+
+  for (const appointment of conflictingAppointments) {
+    for (const resource of appointment.resources) {
+      occupiedResourceIds.add(resource.resourceId);
+    }
+  }
+
+  // Check active reservations occupying resources
+  const conflictingReservations =
+    await tx.reservation.findMany({
+      where: {
+        branchId,
+        serviceId,
+        reservedDate: appointmentDate,
+        status: "ACTIVE",
+        expiresAt: {
+          gt: new Date(),
+        },
+        startTime: {
+          lt: endDateTime,
+        },
+        endTime: {
+          gt: startDateTime,
+        },
+      },
+      select: {
+        resourceId: true,
+        token: true,
+      },
+    });
+
+  for (const reservationItem of conflictingReservations) {
+    // Ignore our own reservation
+    if (
+      reservationToken &&
+      reservationItem.token === reservationToken
+    ) {
+      continue;
+    }
+
+    if (reservationItem.resourceId !== null) {
+      occupiedResourceIds.add(
+        reservationItem.resourceId
+      );
+    }
+  }
+
+  // Find the first free resource
+  selectedResourceId =
+    resourceIds.find(
+      (resourceId) =>
+        !occupiedResourceIds.has(resourceId)
+    ) ?? null;
+
+  if (selectedResourceId === null) {
+    throw new Error("RESOURCE_UNAVAILABLE");
+  }
+}
+
+// Create appointment
+const appointmentNumber =
+  `SAQ-${Date.now()}-${randomUUID().slice(0, 8)}`;
+
+const createdAppointment = await tx.appointment.create({
+  data: {
+    appointmentNumber,
+    userId,
+    branchId,
+    serviceId,
+    appointmentDate,
+    startTime: startDateTime,
+    endTime: endDateTime,
+    notes,
+    idempotencyKey,
+    status: "CONFIRMED",
+  },
+});
+
+// Assign resource to appointment
+if (selectedResourceId !== null) {
+  await tx.appointmentResource.create({
+    data: {
+      appointmentId: createdAppointment.id,
+      resourceId: selectedResourceId,
+    },
+  });
+}
 
         // Convert the reservation after successful creation.
         // Convert the reservation after successful creation.
@@ -702,6 +1017,16 @@ if (reservation) {
           },
         });
       }
+       if (error.message === "RESOURCE_UNAVAILABLE") {
+    return res.status(409).json({
+      success: false,
+      error: {
+        code: "RESOURCE_UNAVAILABLE",
+        message:
+          "No required resource is available for this slot",
+      },
+    });
+  }
 
       if (error.message === "IDEMPOTENCY_CONFLICT") {
         return res.status(409).json({

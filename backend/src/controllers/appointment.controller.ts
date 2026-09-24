@@ -6,6 +6,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../config/prisma";
 import { processWaitlistForSlot } from "../services/waitlist.service";
+import { redis } from "../config/redis";
 
 // ---------- VALIDATION ----------
 
@@ -61,7 +62,6 @@ function overlaps(
 }
 
 // ---------- AVAILABILITY LOGIC ----------
-
 async function getAvailableSlots(
   branchId: number,
   serviceId: number,
@@ -69,6 +69,16 @@ async function getAvailableSlots(
 ) {
   if (!isValidDate(date)) {
     throw new Error("INVALID_DATE");
+  }
+
+  // Redis cache key
+  const cacheKey = `availability:${branchId}:${serviceId}:${date}`;
+
+  // Check Redis first
+  const cached = await redis.get(cacheKey);
+
+  if (cached) {
+    return JSON.parse(cached);
   }
 
   const appointmentDate = dateFromString(date);
@@ -106,11 +116,20 @@ async function getAvailableSlots(
   });
 
   if (holiday) {
-    return {
+    const result = {
       service,
       slots: [] as string[],
       message: "Branch is closed on this holiday",
     };
+
+    await redis.set(
+      cacheKey,
+      JSON.stringify(result),
+      "EX",
+      30
+    );
+
+    return result;
   }
 
   const hours = await prisma.businessHour.findUnique({
@@ -123,11 +142,20 @@ async function getAvailableSlots(
   });
 
   if (!hours) {
-    return {
+    const result = {
       service,
       slots: [] as string[],
       message: "No working hours configured",
     };
+
+    await redis.set(
+      cacheKey,
+      JSON.stringify(result),
+      "EX",
+      30
+    );
+
+    return result;
   }
 
   const open = timeToMinutes(hours.openTime);
@@ -135,11 +163,20 @@ async function getAvailableSlots(
   const duration = service.duration;
 
   if (close <= open) {
-    return {
+    const result = {
       service,
       slots: [] as string[],
       message: "Invalid business hours",
     };
+
+    await redis.set(
+      cacheKey,
+      JSON.stringify(result),
+      "EX",
+      30
+    );
+
+    return result;
   }
 
   // --------------------------------------------------
@@ -256,10 +293,7 @@ async function getAvailableSlots(
   ) {
     const end = start + duration;
 
-    // -----------------------------------------------
     // Break check
-    // -----------------------------------------------
-
     if (hours.breakStart && hours.breakEnd) {
       const breakStart = timeToMinutes(hours.breakStart);
       const breakEnd = timeToMinutes(hours.breakEnd);
@@ -269,10 +303,7 @@ async function getAvailableSlots(
       }
     }
 
-    // -----------------------------------------------
     // Capacity check
-    // -----------------------------------------------
-
     const overlappingAppointments =
       occupiedAppointments.filter((appointment) =>
         overlaps(
@@ -301,12 +332,7 @@ async function getAvailableSlots(
       continue;
     }
 
-    // -----------------------------------------------
     // Resource check
-    // -----------------------------------------------
-
-    // If this service has no resources assigned,
-    // availability depends only on service capacity.
     if (resourceIds.length > 0) {
       const occupiedResourceIds = new Set<number>();
 
@@ -317,20 +343,18 @@ async function getAvailableSlots(
         }
       }
 
-      // Resources occupied by active reservations
+      // Resources occupied by reservations
       for (const reservation of overlappingReservations) {
         if (reservation.resourceId !== null) {
           occupiedResourceIds.add(reservation.resourceId);
         }
       }
 
-      // Find resources that are still free.
       const availableResourceCount = resourceIds.filter(
         (resourceId) =>
           !occupiedResourceIds.has(resourceId)
       ).length;
 
-      // For now, one resource is required for one booking.
       if (availableResourceCount === 0) {
         continue;
       }
@@ -339,11 +363,22 @@ async function getAvailableSlots(
     slots.push(minutesToTime(start));
   }
 
-  return {
+  // Final result
+  const result = {
     service,
     slots,
     message: "Available slots retrieved",
   };
+
+  // Store in Redis for 30 seconds
+  await redis.set(
+    cacheKey,
+    JSON.stringify(result),
+    "EX",
+    30
+  );
+
+  return result;
 }
 
 export async function checkAvailability(
@@ -649,6 +684,10 @@ if (
     hashtext(${lockKey})::bigint
   )
 `;
+
+await redis.del(
+  `availability:${appointment.branchId}:${appointment.serviceId}:${appointment.appointmentDate.toISOString().slice(0, 10)}`
+);
 
         // Check idempotency again inside the transaction.
         const retry = await tx.appointment.findUnique({

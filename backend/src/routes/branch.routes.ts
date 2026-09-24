@@ -19,9 +19,14 @@ const updateSchema = branchSchema.partial().extend({
 });
 
 router.get("/", async (_req, res) => {
-  const branches = await prisma.branch.findMany({
-    orderBy: { id: "asc" },
-  });
+ const branches = await prisma.branch.findMany({
+  where: {
+    active: true,
+  },
+  orderBy: {
+    id: "asc",
+  },
+});
 
   res.json({
     success: true,

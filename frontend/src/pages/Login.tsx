@@ -35,7 +35,13 @@ export default function Login() {
       sessionStorage.setItem("user", JSON.stringify(user));
 
       // Go to dashboard after successful login
-      navigate("/dashboard");
+     if (user.role === "ADMIN") {
+  navigate("/admin");
+} else if (user.role === "STAFF") {
+  navigate("/staff");
+} else {
+  navigate("/dashboard");
+}
 
     } catch (error) {
       console.error("LOGIN ERROR:", error);

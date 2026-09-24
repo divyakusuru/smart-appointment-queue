@@ -523,67 +523,80 @@ export const getMyQueuePosition = async (
 };
 
 // GET /api/queue
+// GET /api/queue?branchId=1&date=2026-09-24
 export const getBranchQueue = async (
   req: AuthRequest,
   res: Response
-) => {
+): Promise<void> => {
   try {
     const user = req.user;
 
     if (!user) {
-      return res.status(401).json({
+      res.status(401).json({
         success: false,
         message: "Unauthorized",
       });
+      return;
     }
 
     if (user.role !== "ADMIN" && user.role !== "STAFF") {
-      return res.status(403).json({
+      res.status(403).json({
         success: false,
         message: "Only staff or admins can view the branch queue",
       });
+      return;
     }
 
     const parsed = queueQuerySchema.safeParse(req.query);
 
     if (!parsed.success) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         message: "branchId and date are required",
       });
+      return;
     }
 
     const { branchId, date } = parsed.data;
 
-    const appointments = await prisma.appointment.findMany({
+    const queueDate = new Date(`${date}T00:00:00.000Z`);
+
+    const queue = await prisma.queue.findMany({
       where: {
         branchId,
-        appointmentDate: new Date(`${date}T00:00:00.000Z`),
-        status: {
-          not: "CANCELLED",
+        queueDate,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        appointment: {
+          include: {
+            service: {
+              select: {
+                id: true,
+                name: true,
+                duration: true,
+              },
+            },
+          },
         },
       },
       orderBy: [
-        { startTime: "asc" },
-        { id: "asc" },
+        {
+          priority: "desc",
+        },
+        {
+          position: "asc",
+        },
       ],
-      select: {
-        id: true,
-        appointmentNumber: true,
-        userId: true,
-        serviceId: true,
-        startTime: true,
-        endTime: true,
-        status: true,
-      },
     });
 
-    const queue = appointments.map((appointment, index) => ({
-      ...appointment,
-      queuePosition: index + 1,
-    }));
-
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       count: queue.length,
       queue,
@@ -591,7 +604,7 @@ export const getBranchQueue = async (
   } catch (error) {
     console.error("GET BRANCH QUEUE ERROR:", error);
 
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: "Could not fetch branch queue",
     });

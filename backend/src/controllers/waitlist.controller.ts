@@ -104,33 +104,58 @@ export const getMyWaitlist = async (
     const userId = req.user?.id;
 
     if (!userId) {
-      res.status(401).json({ message: "Please login first" });
+      res.status(401).json({
+        message: "Please login first",
+      });
       return;
     }
 
     const entries = await prisma.waitlist.findMany({
-      where: { userId },
+      where: {
+        userId,
+      },
       include: {
         branch: true,
         service: true,
       },
       orderBy: {
-        createdAt: "desc",
+        createdAt: "asc",
       },
     });
 
+    const entriesWithPosition = await Promise.all(
+      entries.map(async (entry) => {
+        const aheadCount = await prisma.waitlist.count({
+          where: {
+            branchId: entry.branchId,
+            serviceId: entry.serviceId,
+            requestedDate: entry.requestedDate,
+            status: "WAITING",
+            createdAt: {
+              lt: entry.createdAt,
+            },
+          },
+        });
+
+        return {
+          ...entry,
+          position: aheadCount + 1,
+        };
+      })
+    );
+
     res.status(200).json({
-      count: entries.length,
-      waitlist: entries,
+      count: entriesWithPosition.length,
+      waitlist: entriesWithPosition,
     });
   } catch (error) {
     console.error("Get waitlist error:", error);
+
     res.status(500).json({
       message: "Failed to fetch waitlist",
     });
   }
 };
-
 // DELETE /api/waitlist/:id
 // Customer cancels their own waitlist entry
 export const leaveWaitlist = async (

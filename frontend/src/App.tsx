@@ -6,18 +6,24 @@ import BookAppointment from "./pages/BookAppointment";
 import Appointments from "./pages/Appointments";
 import Queue from "./pages/Queue";
 import Waitlist from "./pages/Waitlist";
+import StaffQueue from "./pages/StaffQueue";
+import AdminDashboard from "./pages/AdminDashboard";
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
+
+        {/* Login */}
         <Route path="/" element={<Login />} />
 
+        {/* Customer Dashboard */}
         <Route
           path="/dashboard"
           element={<Dashboard />}
         />
 
+        {/* Customer */}
         <Route
           path="/book"
           element={<BookAppointment />}
@@ -37,6 +43,18 @@ function App() {
           path="/waitlist"
           element={<Waitlist />}
         />
+
+        {/* Staff */}
+        <Route
+          path="/staff"
+          element={<StaffQueue />}
+        />
+
+        <Route
+  path="/admin"
+  element={<AdminDashboard />}
+/>
+
       </Routes>
     </BrowserRouter>
   );

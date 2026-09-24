@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import Login from "./pages/Login";
+import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 import BookAppointment from "./pages/BookAppointment";
 import Appointments from "./pages/Appointments";
@@ -16,6 +17,8 @@ function App() {
 
         {/* Login */}
         <Route path="/" element={<Login />} />
+
+        <Route path="/register" element={<Register />} />
 
         {/* Customer Dashboard */}
         <Route

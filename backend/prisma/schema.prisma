@@ -107,10 +107,11 @@ model Service {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  branch          Branch        @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  branch          Branch            @relation(fields: [branchId], references: [id], onDelete: Restrict)
   appointments    Appointment[]
   waitlistEntries Waitlist[]
   reservations    Reservation[]
+  serviceResources ServiceResource[]
 
   @@index([branchId, active])
 }
@@ -125,8 +126,22 @@ model Resource {
   branch               Branch                @relation(fields: [branchId], references: [id], onDelete: Restrict)
   appointmentResources AppointmentResource[]
   reservations         Reservation[]
+  serviceResources     ServiceResource[]
 
   @@index([branchId, active])
+}
+
+model ServiceResource {
+  id         Int @id @default(autoincrement())
+  serviceId  Int
+  resourceId Int
+
+  service  Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@unique([serviceId, resourceId])
+  @@index([serviceId])
+  @@index([resourceId])
 }
 
 model BusinessHour {

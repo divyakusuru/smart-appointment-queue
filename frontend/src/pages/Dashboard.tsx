@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import "./Dashboard.css";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -15,46 +16,163 @@ export default function Dashboard() {
   }
 
   return (
-    <main>
-      <h1>Smart Appointment & Queue</h1>
+    <main className="dashboard-page">
 
-      <h2>Customer Dashboard</h2>
+      {/* Header */}
+      <header className="dashboard-header">
+        <div>
+          <h1>Smart Appointment & Queue</h1>
+          <p>Customer Dashboard</p>
+        </div>
 
-      {user && (
-        <p>
-          Welcome, <strong>{user.name}</strong>
-        </p>
-      )}
+        <button
+          className="logout-button"
+          onClick={handleLogout}
+        >
+          Logout
+        </button>
+      </header>
 
-      <hr />
+      {/* Welcome Section */}
+      <section className="welcome-section">
+        <div>
+          <p className="welcome-label">Welcome back</p>
 
-      <h3>Appointments</h3>
+          <h2>
+            {user ? user.name : "Customer"} 👋
+          </h2>
 
-      <button onClick={() => navigate("/book")}>
-        Book Appointment
-      </button>
+          <p className="welcome-text">
+            Manage your appointments, queue status and waitlist
+            from one place.
+          </p>
+        </div>
+      </section>
 
-      <button onClick={() => navigate("/appointments")}>
-        My Appointments
-      </button>
+      {/* Quick Actions */}
+      <section className="dashboard-section">
 
-      <h3>Queue</h3>
+        <div className="section-heading">
+          <h2>Quick Actions</h2>
+          <p>What would you like to do?</p>
+        </div>
 
-      <button onClick={() => navigate("/queue")}>
-        My Queue
-      </button>
+        <div className="dashboard-grid">
 
-      <h3>Waitlist</h3>
+          {/* Book Appointment */}
+          <div className="dashboard-card">
+            <div className="card-icon">📅</div>
 
-      <button onClick={() => navigate("/waitlist")}>
-        Join Waitlist
-      </button>
+            <h3>Book Appointment</h3>
 
-      <hr />
+            <p>
+              Find an available time slot and book your
+              appointment.
+            </p>
 
-      <button onClick={handleLogout}>
-        Logout
-      </button>
+            <button
+              className="primary-button"
+              onClick={() => navigate("/book")}
+            >
+              Book Appointment
+            </button>
+          </div>
+
+          {/* My Appointments */}
+          <div className="dashboard-card">
+            <div className="card-icon">📋</div>
+
+            <h3>My Appointments</h3>
+
+            <p>
+              View your upcoming and previous appointments.
+            </p>
+
+            <button
+              className="secondary-button"
+              onClick={() => navigate("/appointments")}
+            >
+              View Appointments
+            </button>
+          </div>
+
+          {/* Queue */}
+          <div className="dashboard-card">
+            <div className="card-icon">🎫</div>
+
+            <h3>My Queue</h3>
+
+            <p>
+              Check your current queue position and status.
+            </p>
+
+            <button
+              className="secondary-button"
+              onClick={() => navigate("/queue")}
+            >
+              View Queue
+            </button>
+          </div>
+
+          {/* Waitlist */}
+          <div className="dashboard-card">
+            <div className="card-icon">⏳</div>
+
+            <h3>Waitlist</h3>
+
+            <p>
+              Join a waitlist when your preferred slot is
+              unavailable.
+            </p>
+
+            <button
+              className="secondary-button"
+              onClick={() => navigate("/waitlist")}
+            >
+              Manage Waitlist
+            </button>
+          </div>
+
+        </div>
+      </section>
+
+      {/* Information Section */}
+      <section className="info-section">
+
+        <div className="info-card">
+          <h3>How it works</h3>
+
+          <div className="steps">
+
+            <div className="step">
+              <span>1</span>
+              <div>
+                <strong>Book</strong>
+                <p>Select a branch, service and available slot.</p>
+              </div>
+            </div>
+
+            <div className="step">
+              <span>2</span>
+              <div>
+                <strong>Check your queue</strong>
+                <p>Track your appointment and queue status.</p>
+              </div>
+            </div>
+
+            <div className="step">
+              <span>3</span>
+              <div>
+                <strong>Get served</strong>
+                <p>Follow the queue until your service is completed.</p>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </section>
+
     </main>
   );
 }

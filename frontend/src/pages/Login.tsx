@@ -1,124 +1,129 @@
 import { useState } from "react";
 import axios from "axios";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import "./Login.css";
 
 const API_URL = "http://localhost:5000/api";
 
-export default function Login() {
+function Login() {
   const navigate = useNavigate();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [message, setMessage] = useState("");
 
-  async function handleSubmit(
-    event: React.FormEvent<HTMLFormElement>
-  ) {
-    event.preventDefault();
-    setMessage("Logging in...");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault();
+
+    setError("");
+
+    if (!email || !password) {
+      setError("Please enter your email and password");
+      return;
+    }
 
     try {
-      const response = await axios.post(
-        `${API_URL}/auth/login`,
-        {
-          email,
-          password,
-        }
-      );
+      setLoading(true);
 
-      const { user, accessToken, refreshToken } =
-        response.data.data;
+      const response = await axios.post(`${API_URL}/auth/login`, {
+        email,
+        password,
+      });
 
-      // Store login information for the current browser session
+      const { user, accessToken, refreshToken } = response.data.data;
+
       sessionStorage.setItem("accessToken", accessToken);
       sessionStorage.setItem("refreshToken", refreshToken);
       sessionStorage.setItem("user", JSON.stringify(user));
 
-      // Go to dashboard after successful login
-     if (user.role === "ADMIN") {
-  navigate("/admin");
-} else if (user.role === "STAFF") {
-  navigate("/staff");
-} else {
-  navigate("/dashboard");
-}
-
-    } catch (error) {
-      console.error("LOGIN ERROR:", error);
-
-      if (axios.isAxiosError(error)) {
-        console.error(
-          "BACKEND ERROR RESPONSE:",
-          error.response?.data
-        );
-
-        console.error(
-          "HTTP STATUS:",
-          error.response?.status
-        );
-
-        setMessage(
-          error.response?.data?.error?.message ||
-            (error.response
-              ? `Login failed with status ${error.response.status}`
-              : "Cannot connect to the backend. Check if the server is running.")
-        );
+      if (user.role === "ADMIN") {
+        navigate("/admin");
+      } else if (user.role === "STAFF") {
+        navigate("/staff");
       } else {
-        console.error("UNEXPECTED ERROR:", error);
-        setMessage(
-          "Something went wrong. Check the browser console."
-        );
+        navigate("/dashboard");
       }
+    } catch (err: any) {
+      console.log("Login error:", err.response?.data || err);
+
+      const errorData = err.response?.data;
+
+      if (typeof errorData?.error?.message === "string") {
+        setError(errorData.error.message);
+      } else if (typeof errorData?.message === "string") {
+        setError(errorData.message);
+      } else {
+        setError("Invalid email or password");
+      }
+    } finally {
+      setLoading(false);
     }
   }
 
   return (
-    <main>
-      <h1>Smart Appointment & Queue</h1>
+    <div className="login-page">
+      <div className="login-card">
 
-      <h2>Login</h2>
+        <div className="login-header">
+          <div className="login-icon">SAQ</div>
 
-      <form onSubmit={handleSubmit}>
-        <div>
-          <label htmlFor="email">
-            Email
-          </label>
+          <h1>Smart Appointment & Queue</h1>
 
-          <input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(event) =>
-              setEmail(event.target.value)
-            }
-            required
-          />
+          <p>
+            Manage your appointments and queues with ease
+          </p>
         </div>
 
-        <div>
-          <label htmlFor="password">
-            Password
-          </label>
+        <form onSubmit={handleLogin}>
 
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(event) =>
-              setPassword(event.target.value)
-            }
-            required
-          />
+          <div className="login-form-group">
+            <label>Email</label>
+
+            <input
+              type="email"
+              placeholder="Enter your email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
+
+          <div className="login-form-group">
+            <label>Password</label>
+
+            <input
+              type="password"
+              placeholder="Enter your password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
+
+          {error && (
+            <div className="login-error">
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            className="login-button"
+            disabled={loading}
+          >
+            {loading ? "Signing in..." : "Login"}
+          </button>
+
+        </form>
+
+        <div className="login-register">
+          <span>Don't have an account?</span>{" "}
+          <Link to="/register">Register</Link>
         </div>
 
-        <button type="submit">
-          Login
-        </button>
-      </form>
-
-      <p role="status">
-        {message}
-      </p>
-    </main>
+      </div>
+    </div>
   );
 }
+
+export default Login;

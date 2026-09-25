@@ -47,6 +47,13 @@ type Holiday = {
   description?: string;
 };
 
+type ServiceResource = {
+  id: number;
+  branchId: number;
+  name: string;
+  active: boolean;
+};
+
 const days = [
   { value: 0, label: "Sunday" },
   { value: 1, label: "Monday" },
@@ -123,6 +130,19 @@ export default function AdminDashboard() {
   const [holidayDate, setHolidayDate] = useState("");
   const [holidayDescription, setHolidayDescription] = useState("");
 
+  const [selectedServiceForResources, setSelectedServiceForResources] =
+  useState<number | null>(null);
+
+ 
+
+const [branchResources, setBranchResources] = useState<ServiceResource[]>(
+  []
+);
+
+const [selectedResourceIds, setSelectedResourceIds] = useState<number[]>([]);
+
+const [resourceSaving, setResourceSaving] = useState(false);
+
   // -----------------------------
   // AUTH
   // -----------------------------
@@ -152,7 +172,64 @@ export default function AdminDashboard() {
       console.error("LOAD BRANCHES ERROR:", error);
     }
   }
+   
+  async function loadServiceResources(serviceId: number) {
+  const response = await axios.get(
+    `${API_URL}/services/${serviceId}/resources`
+  );
 
+  const assigned = response.data.data || [];
+
+  setSelectedResourceIds(
+    assigned.map((resource: ServiceResource) => resource.id)
+  );
+}
+
+async function loadBranchResources(branchId: number) {
+  try {
+    const response = await axios.get(
+      `${API_URL}/resources?branchId=${branchId}`
+    );
+
+    setBranchResources(response.data.data || []);
+  } catch (error) {
+    console.error("Failed to load branch resources", error);
+    setBranchResources([]);
+  }
+}
+async function saveServiceResources() {
+  if (!selectedServiceForResources) {
+    return;
+  }
+
+  try {
+    setResourceSaving(true);
+
+    await axios.put(
+      `${API_URL}/services/${selectedServiceForResources}/resources`,
+      {
+        resourceIds: selectedResourceIds,
+      },
+      authConfig
+    );
+
+    await loadServiceResources(selectedServiceForResources);
+
+    setMessage("Resources assigned successfully");
+  } catch (error) {
+    console.error("Failed to save service resources", error);
+
+    if (axios.isAxiosError(error)) {
+      setMessage(
+        error.response?.data?.error?.message ||
+          error.response?.data?.message ||
+          "Failed to save resources"
+      );
+    }
+  } finally {
+    setResourceSaving(false);
+  }
+}
   // ============================================================
   // SERVICES
   // ============================================================
@@ -306,6 +383,16 @@ export default function AdminDashboard() {
       }
     }
   }
+
+  function toggleServiceResource(resourceId: number) {
+  setSelectedResourceIds((current) => {
+    if (current.includes(resourceId)) {
+      return current.filter((id) => id !== resourceId);
+    }
+
+    return [...current, resourceId];
+  });
+}
 
   // ============================================================
   // DELETE BRANCH
@@ -1694,6 +1781,94 @@ export default function AdminDashboard() {
           </div>
 
         </section>
+        <section className="admin-card">
+  <div className="admin-section-title">
+    <div>
+      <h2>Assign Resources to Services</h2>
+      <p>
+        Select which resources can be used when customers book a service.
+      </p>
+    </div>
+  </div>
+
+  <div className="admin-form-group">
+    <label>Select Service</label>
+
+    <select
+      value={selectedServiceForResources ?? ""}
+      onChange={async (e) => {
+        const serviceId = Number(e.target.value);
+
+        if (!serviceId) {
+          setSelectedServiceForResources(null);
+          setBranchResources([]);
+           
+          setSelectedResourceIds([]);
+          return;
+        }
+
+        setSelectedServiceForResources(serviceId);
+
+        const selectedService = services.find(
+          (service) => service.id === serviceId
+        );
+
+        if (selectedService) {
+          await loadBranchResources(selectedService.branchId);
+        }
+
+        await loadServiceResources(serviceId);
+      }}
+    >
+      <option value="">Select a service</option>
+
+      {services.map((service) => (
+        <option key={service.id} value={service.id}>
+          {service.name}
+        </option>
+      ))}
+    </select>
+  </div>
+
+  {selectedServiceForResources && (
+    <>
+      <div className="resource-selection">
+        <h3>Available Resources</h3>
+
+        {branchResources.length === 0 ? (
+          <p className="empty-message">
+            No active resources found for this branch.
+          </p>
+        ) : (
+          <div className="resource-checkbox-list">
+            {branchResources.map((resource) => (
+              <label
+                key={resource.id}
+                className="resource-checkbox"
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedResourceIds.includes(resource.id)}
+                  onChange={() => toggleServiceResource(resource.id)}
+                />
+
+                <span>{resource.name}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <button
+        className="admin-primary-button"
+        onClick={saveServiceResources}
+        disabled={resourceSaving}
+      >
+        {resourceSaving ? "Saving..." : "Save Resources"}
+      </button>
+    </>
+  )}
+</section>
 
       </main>
     </div>

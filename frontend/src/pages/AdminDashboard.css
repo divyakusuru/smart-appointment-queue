@@ -511,3 +511,43 @@
     flex-direction: column;
   }
 }
+
+.resource-selection {
+  margin-top: 20px;
+}
+
+.resource-selection h3 {
+  margin-bottom: 12px;
+}
+
+.resource-checkbox-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.resource-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid #d9e2ec;
+  border-radius: 10px;
+  background: #f8fafc;
+  cursor: pointer;
+}
+
+.resource-checkbox:hover {
+  border-color: #2563eb;
+}
+
+.resource-checkbox input {
+  width: 18px;
+  height: 18px;
+}
+
+.empty-message {
+  color: #64748b;
+  padding: 15px 0;
+}

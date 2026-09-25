@@ -105,7 +105,7 @@ export default function Waitlist() {
     try {
       setLoading(true);
 
-      const response = await api.get("/waitlist/mine");
+      const response = await api.get("/waitlist/my");
 
       setEntries(response.data.data || []);
     } catch (error) {
@@ -113,7 +113,9 @@ export default function Waitlist() {
 
       if (axios.isAxiosError(error)) {
         setMessage(
-          error.response?.data?.error?.message ||
+         error.response?.data?.message ||
+        error.response?.data?.error?.message ||
+
             "Could not load waitlist."
         );
       } else {

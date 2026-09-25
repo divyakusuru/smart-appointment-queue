@@ -14,10 +14,18 @@ import reservationRoutes from "./routes/reservation.routes";
 import "./services/reservation.expiry.worker";
 import notificationRoutes from "./routes/notification.routes";
 import { apiRateLimiter } from "./middleware/rateLimiter";
+import swaggerUi from "swagger-ui-express";
+import { swaggerSpec } from "./swagger";
 
 const app = express();
 
 app.use(express.json());
+
+app.use(
+  "/api-docs",
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec)
+);
 
 app.use(
   cors({

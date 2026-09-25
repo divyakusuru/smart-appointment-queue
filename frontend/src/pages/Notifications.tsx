@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import api from "../services/api";
-
+import "./Notifications.css";
 interface Notification {
   id: number;
   type: string;
@@ -103,105 +103,101 @@ export default function Notifications() {
   ).length;
 
   if (loading) {
-    return (
-      <main style={{ padding: 30 }}>
+  return (
+    <main className="notifications-page">
+      <div className="notifications-container">
         <h1>Notifications</h1>
         <p>Loading notifications...</p>
-      </main>
-    );
-  }
+      </div>
+    </main>
+  );
+}
 
-  return (
-    <main
-      style={{
-        maxWidth: 900,
-        margin: "40px auto",
-        padding: 20,
-      }}
-    >
-      <h1>Notifications</h1>
+return (
+  <main className="notifications-page">
+    <div className="notifications-container">
 
-      <p>
-        <strong>Unread:</strong> {unreadCount}
-      </p>
+      <div className="notifications-header">
+        <div>
+          <h1>Notifications</h1>
+          <p className="unread-count">
+            <strong>Unread:</strong> {unreadCount}
+          </p>
+        </div>
+      </div>
 
-      <button type="button" onClick={loadNotifications}>
-        Refresh
-      </button>
-
-      {unreadCount > 0 && (
-        <button
-          type="button"
-          onClick={markAllAsRead}
-          style={{ marginLeft: 10 }}
-        >
-          Mark All as Read
+      <div className="notification-actions">
+        <button type="button" onClick={loadNotifications}>
+          Refresh
         </button>
-      )}
+
+        {unreadCount > 0 && (
+          <button
+            type="button"
+            className="mark-all-button"
+            onClick={markAllAsRead}
+          >
+            Mark All as Read
+          </button>
+        )}
+      </div>
 
       {message && (
-        <p style={{ color: "green" }}>
+        <p className="notification-message">
           {message}
         </p>
       )}
 
       {error && (
-        <p style={{ color: "red" }}>
+        <p className="notification-error">
           {error}
         </p>
       )}
 
       {notifications.length === 0 ? (
-        <p>No notifications.</p>
+        <p className="empty-notifications">
+          No notifications.
+        </p>
       ) : (
         notifications.map((notification) => (
           <div
             key={notification.id}
-            style={{
-              border: "1px solid #ddd",
-              borderRadius: 8,
-              padding: 20,
-              marginTop: 15,
-              backgroundColor: notification.isRead
-                ? "#f5f5f5"
-                : "#eef6ff",
-            }}
+            className={`notification-card ${
+              notification.isRead ? "read" : "unread"
+            }`}
           >
             <h2>{notification.title}</h2>
 
             <p>{notification.message}</p>
 
             <p>
-              <strong>Type:</strong>{" "}
-              {notification.type}
+              <strong>Type:</strong> {notification.type}
             </p>
 
             <p>
               <strong>Created:</strong>{" "}
-              {new Date(
-                notification.createdAt
-              ).toLocaleString()}
+              {new Date(notification.createdAt).toLocaleString()}
             </p>
 
             {!notification.isRead && (
               <button
                 type="button"
-                onClick={() =>
-                  markAsRead(notification.id)
-                }
+                onClick={() => markAsRead(notification.id)}
               >
                 Mark as Read
               </button>
             )}
 
             {notification.isRead && (
-              <p>
+              <p className="read-status">
                 <strong>Status:</strong> Read
               </p>
             )}
           </div>
         ))
       )}
-    </main>
-  );
+
+    </div>
+  </main>
+);
 }

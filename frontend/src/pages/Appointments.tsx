@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import api from "../services/api";
+import "./Appointments.css";
 
 interface Appointment {
   id: number;

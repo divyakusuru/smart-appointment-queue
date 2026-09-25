@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import api from "../services/api";
+import "./Queue.css";
 
 interface QueueItem {
   queueId: number;

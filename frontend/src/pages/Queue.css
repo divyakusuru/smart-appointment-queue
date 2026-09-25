@@ -1,0 +1,41 @@
+.queue-page {
+  min-height: 100vh;
+  background: #f5f7fb;
+  padding: 35px 20px;
+}
+
+.queue-container {
+  max-width: 900px;
+  margin: auto;
+}
+
+.queue-page h1 {
+  color: #1d4ed8;
+}
+
+.queue-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 22px;
+  margin-top: 18px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.05);
+}
+
+.queue-number {
+  font-size: 28px;
+  font-weight: 700;
+  color: #2563eb;
+}
+
+.queue-card p {
+  color: #4b5563;
+}
+
+.queue-card button {
+  background: #2563eb;
+  color: white;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 8px;
+}

@@ -1,16 +1,21 @@
-
 import { Router } from "express";
+
 import {
   joinWaitlist,
   getMyWaitlist,
   leaveWaitlist,
 } from "../controllers/waitlist.controller";
+
 import { authenticate } from "../middleware/auth";
 
 const router = Router();
 
-router.post("/", authenticate, joinWaitlist);
-router.get("/mine", authenticate, getMyWaitlist);
-router.delete("/:id", authenticate, leaveWaitlist);
+router.use(authenticate);
+
+router.post("/", joinWaitlist);
+
+router.get("/my", getMyWaitlist);
+
+router.delete("/:id", leaveWaitlist);
 
 export default router;

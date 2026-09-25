@@ -1,0 +1,120 @@
+.notifications-page {
+  min-height: 100vh;
+  background: #f5f7fb;
+  padding: 40px 20px;
+}
+
+.notifications-container {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.notifications-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.notifications-header h1 {
+  margin: 0;
+  color: #1d4ed8;
+}
+
+.unread-count {
+  color: #4b5563;
+}
+
+.notification-actions {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.notification-actions button,
+.notification-card button {
+  border: none;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.notification-actions button {
+  background: #2563eb;
+  color: white;
+}
+
+.notification-actions button:hover {
+  background: #1d4ed8;
+}
+
+.mark-all-button {
+  background: #16a34a !important;
+}
+
+.notification-message {
+  color: #166534;
+  background: #f0fdf4;
+  padding: 10px;
+  border-radius: 8px;
+}
+
+.notification-error {
+  color: #b91c1c;
+  background: #fef2f2;
+  padding: 10px;
+  border-radius: 8px;
+}
+
+.notification-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 20px;
+  margin-top: 15px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.notification-card.unread {
+  background: #eef6ff;
+  border-left: 4px solid #2563eb;
+}
+
+.notification-card.read {
+  background: white;
+}
+
+.notification-card h2 {
+  margin-top: 0;
+  color: #1f2937;
+}
+
+.notification-card p {
+  color: #4b5563;
+  line-height: 1.5;
+}
+
+.notification-card button {
+  background: #2563eb;
+  color: white;
+  margin-top: 8px;
+}
+
+.notification-card button:hover {
+  background: #1d4ed8;
+}
+
+.read-status {
+  color: #166534 !important;
+  font-weight: 600;
+}
+
+.empty-notifications {
+  background: white;
+  padding: 30px;
+  text-align: center;
+  border-radius: 12px;
+  color: #6b7280;
+}

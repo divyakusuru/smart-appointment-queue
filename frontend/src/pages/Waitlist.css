@@ -1,0 +1,122 @@
+.waitlist-page {
+  min-height: 100vh;
+  background: #f5f7fb;
+  padding: 35px 20px;
+}
+
+.waitlist-container {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.waitlist-page h1 {
+  color: #1d4ed8;
+  margin-bottom: 8px;
+}
+
+.waitlist-subtitle {
+  color: #6b7280;
+  margin-bottom: 25px;
+}
+
+.waitlist-form {
+  background: white;
+  padding: 25px;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  margin-bottom: 25px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.waitlist-form label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 7px;
+}
+
+.waitlist-form input,
+.waitlist-form select {
+  margin-bottom: 15px;
+}
+
+.waitlist-form button {
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 18px;
+  font-weight: 600;
+}
+
+.waitlist-form button:hover {
+  background: #1d4ed8;
+}
+
+.waitlist-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 22px;
+  margin-bottom: 15px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.waitlist-card h3 {
+  margin-top: 0;
+  color: #1f2937;
+}
+
+.waitlist-card p {
+  color: #4b5563;
+  margin: 8px 0;
+}
+
+.waitlist-position {
+  display: inline-block;
+  background: #eff6ff;
+  color: #1d4ed8;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-weight: 600;
+}
+
+.waitlist-status {
+  display: inline-block;
+  background: #f0fdf4;
+  color: #166534;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-weight: 600;
+}
+
+.waitlist-card button {
+  margin-top: 12px;
+  background: #dc2626;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 15px;
+  font-weight: 600;
+}
+
+.waitlist-error {
+  color: #b91c1c;
+  background: #fef2f2;
+  padding: 10px;
+  border-radius: 8px;
+}
+
+.waitlist-success {
+  color: #166534;
+  background: #f0fdf4;
+  padding: 10px;
+  border-radius: 8px;
+}
+
+.no-waitlist {
+  background: white;
+  padding: 25px;
+  border-radius: 12px;
+  text-align: center;
+  color: #6b7280;
+}

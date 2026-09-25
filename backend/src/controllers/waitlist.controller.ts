@@ -166,11 +166,11 @@ export const joinWaitlist = async (
       },
     });
   } catch (error) {
-    console.error("Join waitlist error:", error);
-
+  console.error("JOIN WAITLIST ERROR:", error);
     res.status(500).json({
-      success: false,
-      message: "Failed to join waitlist",
+       success: false,
+    message: "Failed to join waitlist",
+    error: error instanceof Error ? error.message : String(error),
     });
   }
 };

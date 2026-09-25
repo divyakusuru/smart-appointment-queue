@@ -133,6 +133,25 @@ export default function Dashboard() {
             </button>
           </div>
 
+          {/* Notifications */}
+<div className="dashboard-card">
+  <div className="card-icon">🔔</div>
+
+  <h3>Notifications</h3>
+
+  <p>
+    View appointment confirmations, cancellations,
+    reminders and other updates.
+  </p>
+
+  <button
+    className="secondary-button"
+    onClick={() => navigate("/notifications")}
+  >
+    View Notifications
+  </button>
+</div>
+
         </div>
       </section>
 

@@ -19,12 +19,28 @@ export default function Queue() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  // Branch and date
+  const [branchId, setBranchId] = useState("3");
+  const [date, setDate] = useState(
+    new Date().toISOString().split("T")[0]
+  );
+
   const loadQueue = async () => {
     try {
       setLoading(true);
       setError("");
 
-      const response = await api.get("/queue/mine");
+      if (!branchId || !date) {
+        setError("Branch and date are required");
+        return;
+      }
+
+      const response = await api.get("/queue/mine", {
+        params: {
+          branchId: Number(branchId),
+          date,
+        },
+      });
 
       setQueue(response.data.data || []);
     } catch (err: unknown) {
@@ -51,19 +67,60 @@ export default function Queue() {
   }
 
   return (
-    <div style={{ maxWidth: 900, margin: "40px auto", padding: 20 }}>
+    <div
+      style={{
+        maxWidth: 900,
+        margin: "40px auto",
+        padding: 20,
+      }}
+    >
       <h1>My Queue</h1>
 
+      {/* Branch */}
+      <div style={{ marginBottom: 15 }}>
+        <label>
+          <strong>Branch:</strong>
+        </label>
+
+        <br />
+
+        <select
+          value={branchId}
+          onChange={(e) => setBranchId(e.target.value)}
+        >
+          <option value="3">Hyderabad Central</option>
+          <option value="4">Hyderabad Central main</option>
+        </select>
+      </div>
+
+      {/* Date */}
+      <div style={{ marginBottom: 15 }}>
+        <label>
+          <strong>Date:</strong>
+        </label>
+
+        <br />
+
+        <input
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+        />
+      </div>
+
+      {/* Refresh */}
       <button type="button" onClick={loadQueue}>
         Refresh
       </button>
 
+      {/* Error */}
       {error && (
         <p style={{ color: "red" }}>
           {error}
         </p>
       )}
 
+      {/* Queue */}
       {queue.length === 0 ? (
         <p>No active queue entries.</p>
       ) : (
@@ -85,10 +142,13 @@ export default function Queue() {
             </p>
 
             <p>
-              <strong>Priority:</strong> {item.priority}</p>
+              <strong>Priority:</strong>{" "}
+              {item.priority}
+            </p>
 
             <p>
-              <strong>Status:</strong> {item.status}
+              <strong>Status:</strong>{" "}
+              {item.status}
             </p>
 
             {item.calledAt && (

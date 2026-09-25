@@ -166,6 +166,7 @@ export default function Waitlist() {
 
       if (axios.isAxiosError(error)) {
         setMessage(
+          error.response?.data?.message ||
           error.response?.data?.error?.message ||
             "Could not join waitlist."
         );
@@ -203,7 +204,8 @@ export default function Waitlist() {
 
     if (axios.isAxiosError(error)) {
       setMessage(
-        error.response?.data?.error?.message ||
+       error.response?.data?.message ||
+error.response?.data?.error?.message ||
           "Could not cancel waitlist entry."
       );
     } else {

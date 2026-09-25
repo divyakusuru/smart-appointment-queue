@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
-
-const API = "http://localhost:5000/api";
+import api from "../services/api";
 
 interface QueueItem {
   queueId: number;
@@ -25,19 +24,19 @@ export default function Queue() {
       setLoading(true);
       setError("");
 
-      const token = sessionStorage.getItem("accessToken");
-
-      const response = await axios.get(`${API}/queue/mine`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await api.get("/queue/mine");
 
       setQueue(response.data.data || []);
-    } catch (err: any) {
-      setError(
-        err.response?.data?.message || "Failed to load queue"
-      );
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        setError(
+          err.response?.data?.message ||
+            err.response?.data?.error?.message ||
+            "Failed to load queue"
+        );
+      } else {
+        setError("Failed to load queue");
+      }
     } finally {
       setLoading(false);
     }
@@ -55,7 +54,9 @@ export default function Queue() {
     <div style={{ maxWidth: 900, margin: "40px auto", padding: 20 }}>
       <h1>My Queue</h1>
 
-      <button onClick={loadQueue}>Refresh</button>
+      <button type="button" onClick={loadQueue}>
+        Refresh
+      </button>
 
       {error && (
         <p style={{ color: "red" }}>
@@ -84,8 +85,7 @@ export default function Queue() {
             </p>
 
             <p>
-              <strong>Priority:</strong> {item.priority}
-            </p>
+              <strong>Priority:</strong> {item.priority}</p>
 
             <p>
               <strong>Status:</strong> {item.status}

@@ -27,6 +27,11 @@ export default function Appointments() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
+  const [rescheduleId, setRescheduleId] = useState<number | null>(null);
+  const [newDate, setNewDate] = useState("");
+  const [newTime, setNewTime] = useState("");
+  const [rescheduling, setRescheduling] = useState(false);
+
   const loadAppointments = async () => {
     try {
       setLoading(true);
@@ -80,6 +85,47 @@ export default function Appointments() {
       } else {
         setError("Failed to cancel appointment");
       }
+    }
+  };
+
+  const rescheduleAppointment = async () => {
+    if (!rescheduleId || !newDate || !newTime) {
+      setError("Please select a date and time.");
+      return;
+    }
+
+    try {
+      setRescheduling(true);
+      setError("");
+      setMessage("");
+
+      await api.patch(
+        `/appointments/${rescheduleId}/reschedule`,
+        {
+          date: newDate,
+          startTime: newTime,
+        }
+      );
+
+      setMessage("Appointment rescheduled successfully.");
+
+      setRescheduleId(null);
+      setNewDate("");
+      setNewTime("");
+
+      await loadAppointments();
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        setError(
+          err.response?.data?.message ||
+            err.response?.data?.error?.message ||
+            "Failed to reschedule appointment"
+        );
+      } else {
+        setError("Failed to reschedule appointment");
+      }
+    } finally {
+      setRescheduling(false);
     }
   };
 
@@ -170,19 +216,107 @@ export default function Appointments() {
               </p>
             )}
 
-            {[
-              "PENDING",
-              "CONFIRMED",
-              "CHECKED_IN",
-            ].includes(appointment.status) && (
-              <button
-                type="button"
-                onClick={() =>
-                  cancelAppointment(appointment.id)
-                }
+            {["PENDING", "CONFIRMED"].includes(
+              appointment.status
+            ) && (
+              <>
+                <button
+                  type="button"
+                  onClick={() =>
+                    cancelAppointment(appointment.id)
+                  }
+                  style={{ marginRight: 10 }}
+                >
+                  Cancel Appointment
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRescheduleId(appointment.id);
+                    setNewDate(
+                      appointment.appointmentDate.slice(0, 10)
+                    );
+                    setNewTime(appointment.startTime);
+                    setError("");
+                    setMessage("");
+                  }}
+                >
+                  Reschedule
+                </button>
+              </>
+            )}
+
+            {rescheduleId === appointment.id && (
+              <div
+                style={{
+                  marginTop: 20,
+                  padding: 15,
+                  borderTop: "1px solid #ddd",
+                }}
               >
-                Cancel Appointment
-              </button>
+                <h3>Reschedule Appointment</h3>
+
+                <label>
+                  New Date:
+                </label>
+
+                <br />
+
+                <input
+                  type="date"
+                  value={newDate}
+                  min={new Date()
+                    .toISOString()
+                    .split("T")[0]}
+                  onChange={(e) =>
+                    setNewDate(e.target.value)
+                  }
+                />
+
+                <br />
+                <br />
+
+                <label>
+                  New Time:
+                </label>
+
+                <br />
+
+                <input
+                  type="time"
+                  step="900"
+                  value={newTime}
+                  onChange={(e) =>
+                    setNewTime(e.target.value)
+                  }
+                />
+
+                <br />
+                <br />
+
+                <button
+                  type="button"
+                  onClick={rescheduleAppointment}
+                  disabled={rescheduling}
+                >
+                  {rescheduling
+                    ? "Rescheduling..."
+                    : "Confirm Reschedule"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRescheduleId(null);
+                    setNewDate("");
+                    setNewTime("");
+                  }}
+                  style={{ marginLeft: 10 }}
+                >
+                  Cancel
+                </button>
+              </div>
             )}
           </div>
         ))

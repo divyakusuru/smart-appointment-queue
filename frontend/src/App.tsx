@@ -9,7 +9,7 @@ import Queue from "./pages/Queue";
 import Waitlist from "./pages/Waitlist";
 import StaffQueue from "./pages/StaffQueue";
 import AdminDashboard from "./pages/AdminDashboard";
- 
+import Notifications from "./pages/Notifications";
 
 function App() {
   return (
@@ -57,6 +57,11 @@ function App() {
         <Route
   path="/admin"
   element={<AdminDashboard />}
+/>
+
+<Route
+  path="/notifications"
+  element={<Notifications />}
 />
 
       </Routes>
